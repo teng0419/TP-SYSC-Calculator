@@ -256,13 +256,12 @@ alpha_s_log = np.log10(alpha_s) if alpha_s > 0 else 0
 rs_star = 152.7 * alpha_s_log**2 + 21.14 * alpha_s_log + 26.34
 rs_ratio = rs_stiff / rs_star
 
-# 邊界梁與需求計算
+# 邊界梁需求
 L_b_mm = L_b * 1000.0
 Zx_beam = bf_b * tf_b * (d_b - tf_b) + tw_b * (d_b / 2 - tf_b)**2
 Mp_beam = Zx_beam * Fy_beam
 Vn_beam = 0.6 * Fy_beam * d_b * tw_b
 
-# 修正：定義 V_ult 以避免 NameError
 omega_beam = 1.1
 V_ult = omega_beam * Ry_IC * Vn_IC
 
@@ -273,9 +272,22 @@ V_b = (M_b1 + M_b2) / L_prime
 V_u_PZ = (V_ult * h_SYSC_mm / (d_EJ2 - tf_EJ)) - V_b
 V_n_PZ = 0.6 * Fy_beam * d_b * (tw_b + t_dp)
 
+dcr_beam_M = M_b1 / Mp_beam
+dcr_beam_V = V_b / Vn_beam
+dcr_PZ = V_u_PZ / V_n_PZ
+
 # ==========================================
-# 輸出詳細檢核 UI
+# 輔助函式
 # ==========================================
+def format_dcr(x):
+    if x == 0 or np.isnan(x): return "0.00"
+    return f"{x:.2f}"
+
+def check_item(name, val_str, is_ok):
+    color = "#00E000" if is_ok else "#FF0000"
+    status = "OK!" if is_ok else "NG!"
+    return f"- **{name}**: {val_str} &rarr; <span style='color:{color}; font-weight:bold;'>{status}</span>"
+
 def detail_check(name, actual, limit, unit="", is_lower_bound=False):
     is_ok = actual >= limit if is_lower_bound else actual <= limit
     color = "#00E000" if is_ok else "#FF0000"
@@ -290,6 +302,9 @@ def detail_check(name, actual, limit, unit="", is_lower_bound=False):
     </div>
     """, unsafe_allow_html=True)
 
+# ==========================================
+# 輸出詳細檢核 UI
+# ==========================================
 tab1, tab2, tab3, tab4 = st.tabs(["⚙️ 韌性與容量檢核", "🛡️ 加勁板設計", "🏗️ 邊界梁與交會區", "📐 設計結果與示意圖"])
 
 with tab1:
@@ -322,9 +337,9 @@ with tab2:
 with tab3:
     st.subheader("4. 邊界構架容量設計")
     st.info("根據核心段最大剪力 Vmax 推算梁端需求，確保塑鉸發生在間柱。")
-    detail_check("邊界梁彎矩 DCR (Mb1/Mp)", M_b1/Mp_beam, 1.0)
-    detail_check("邊界梁剪力 DCR (Vb/Vn)", V_b/Vn_beam, 1.0)
-    detail_check("交會區剪力 DCR (Vu/Vn)", V_u_PZ/V_n_PZ, 1.0)
+    detail_check("邊界梁彎矩 DCR (Mb1/Mp)", dcr_beam_M, 1.0)
+    detail_check("邊界梁剪力 DCR (Vb/Vn)", dcr_beam_V, 1.0)
+    detail_check("交會區剪力 DCR (Vu/Vn)", dcr_PZ, 1.0)
 
 with tab4:
     st.subheader("📝 設計結果總覽 (Summary)")
@@ -336,6 +351,23 @@ with tab4:
     - **間柱總高度**: `{h_SYSC:.3f} m`
     """)
     
+    # 保留原本在分頁上方的快速檢核結果
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.markdown("**⚙️ 韌性與容量設計**")
+        st.markdown(check_item("EJ剪力 DCR", format_dcr(dcr_V_EJ), dcr_V_EJ <= 1.0), unsafe_allow_html=True)
+        st.markdown(check_item("EJ彎矩 DCR", format_dcr(dcr_M_EJ), dcr_M_EJ <= 1.0), unsafe_allow_html=True)
+    with col_b:
+        st.markdown("**🛡️ 加勁板設計**")
+        st.markdown(check_item("λnw 檢核", f"{lambda_nw:.3f}", 0.145 <= lambda_nw <= 0.6), unsafe_allow_html=True)
+        st.markdown(check_item("rs/rs* 剛度比", format_dcr(rs_ratio), rs_ratio >= 1.0), unsafe_allow_html=True)
+    with col_c:
+        st.markdown("**🏗️ 邊界梁與交會區**")
+        st.markdown(check_item("梁彎矩 DCR", format_dcr(dcr_beam_M), dcr_beam_M <= 1.0), unsafe_allow_html=True)
+        st.markdown(check_item("交會區 DCR", format_dcr(dcr_PZ), dcr_PZ <= 1.0), unsafe_allow_html=True)
+
+    st.divider()
+
     # 繪製示意圖 (維持原配色)
     fig = go.Figure()
     c_flange_ic, c_flange_ej = "#FFFFFF", "#E0E0E0"
