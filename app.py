@@ -370,7 +370,7 @@ with tab4:
 
     st.divider()
 
-    # --- 保留原本設計結果總覽內容 ---
+    # --- 設計結果總覽內容 ---
     st.subheader("📝 設計結果總覽 (Summary)")
     st.markdown(f"""
     - **IC 段斷面**: `{ic_profile}`
@@ -380,23 +380,9 @@ with tab4:
     - **間柱總高度**: `{h_SYSC:.3f} m`
     """)
     
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        st.markdown("**⚙️ 韌性與容量設計**")
-        st.markdown(check_item("EJ剪力 DCR", format_dcr(dcr_V_EJ), dcr_V_EJ <= 1.0), unsafe_allow_html=True)
-        st.markdown(check_item("EJ彎矩 DCR", format_dcr(dcr_M_EJ), dcr_M_EJ <= 1.0), unsafe_allow_html=True)
-    with col_b:
-        st.markdown("**🛡️ 加勁板設計**")
-        st.markdown(check_item("λnw 檢核", f"{lambda_nw:.3f}", 0.145 <= lambda_nw <= 0.6), unsafe_allow_html=True)
-        st.markdown(check_item("rs/rs* 剛度比", format_dcr(rs_ratio), rs_ratio >= 1.0), unsafe_allow_html=True)
-    with col_c:
-        st.markdown("**🏗️ 邊界梁與交會區**")
-        st.markdown(check_item("梁彎矩 DCR", format_dcr(dcr_beam_M), dcr_beam_M <= 1.0), unsafe_allow_html=True)
-        st.markdown(check_item("交會區 DCR", format_dcr(dcr_PZ), dcr_PZ <= 1.0), unsafe_allow_html=True)
-
     st.divider()
 
-    # 繪製示意圖
+    # 繪製示意圖 (維持原配色)
     fig = go.Figure()
     c_flange_ic, c_flange_ej = "#FFFFFF", "#E0E0E0"
     c_web_ic, c_web_ej = "#FFF99E", "#7CB3FF"
@@ -411,6 +397,7 @@ with tab4:
     y_end_bot_s, y_end_bot_e = h_EJ_mm, y_ic_b
     y_end_top_s, y_end_top_e = y_ic_t, y_ic_t + ts_End
     
+    # 1. 柱與梁
     fig.add_shape(type="rect", x0=x_L-d_c/2, x1=x_L+d_c/2, y0=-d_b, y1=h_SYSC_mm+d_b, fillcolor=c_col, opacity=0.3, line=line_s)
     fig.add_shape(type="rect", x0=x_R-d_c/2, x1=x_R+d_c/2, y0=-d_b, y1=h_SYSC_mm+d_b, fillcolor=c_col, opacity=0.3, line=line_s)
     def draw_boundary_beam(y_start, d_bm, tf_bm, is_top=False):
@@ -424,12 +411,14 @@ with tab4:
     draw_boundary_beam(0, d_b, tf_b, is_top=False)
     draw_boundary_beam(h_SYSC_mm, d_b, tf_b, is_top=True)
 
+    # 2. Panel Zone
     for x_p in [-d_EJ2/2, d_EJ2/2]:
         fig.add_shape(type="rect", x0=x_p-tf_EJ/2, x1=x_p+tf_EJ/2, y0=-d_b+tf_b, y1=-tf_b, fillcolor=c_flange_ej, line=dict(width=0))
         fig.add_shape(type="rect", x0=x_p-tf_EJ/2, x1=x_p+tf_EJ/2, y0=h_SYSC_mm+tf_b, y1=h_SYSC_mm+d_b-tf_b, fillcolor=c_flange_ej, line=dict(width=0))
     fig.add_shape(type="rect", x0=-d_EJ2/2+tf_EJ/2, x1=d_EJ2/2-tf_EJ/2, y0=-d_b+tf_b, y1=-tf_b, fillcolor=c_pz_doubler, line=dict(width=0))
     fig.add_shape(type="rect", x0=-d_EJ2/2+tf_EJ/2, x1=d_EJ2/2-tf_EJ/2, y0=h_SYSC_mm+tf_b, y1=h_SYSC_mm+d_b-tf_b, fillcolor=c_pz_doubler, line=dict(width=0))
 
+    # 3. IC 段
     fig.add_shape(type="rect", x0=-d_IC/2, x1=-d_IC/2+tf_IC, y0=y_ic_b, y1=y_ic_t, fillcolor=c_flange_ic, line=line_s)
     fig.add_shape(type="rect", x0=d_IC/2-tf_IC, x1=d_IC/2, y0=y_ic_b, y1=y_ic_t, fillcolor=c_flange_ic, line=line_s)
     fig.add_shape(type="rect", x0=-d_IC/2+tf_IC, x1=d_IC/2-tf_IC, y0=y_ic_b, y1=y_ic_t, fillcolor=c_web_ic, line=line_s)
@@ -445,10 +434,12 @@ with tab4:
             xc = -hw_ic_net/2 + i * dx
             fig.add_shape(type="line", x0=xc, x1=xc, y0=y_ic_b, y1=y_ic_t, line=dict(color=c_stiff, width=1.5))
 
+    # 4. 端部板
     w_end = d_IC + 20.0
     fig.add_shape(type="rect", x0=-w_end/2, x1=w_end/2, y0=y_end_bot_s, y1=y_end_bot_e, fillcolor=c_end_plate, line=line_s)
     fig.add_shape(type="rect", x0=-w_end/2, x1=w_end/2, y0=y_end_top_s, y1=y_end_top_e, fillcolor=c_end_plate, line=line_s)
 
+    # 5. EJ 段
     def draw_ej_clean(ys, ye, ds, de, tfv, cw, flip=False):
         dsm, dlg = (de, ds) if flip else (ds, de)
         ysm, ylg = (ye, ys) if flip else (ys, ye)
