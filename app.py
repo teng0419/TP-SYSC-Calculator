@@ -219,11 +219,11 @@ Vn_EJ_design = 0.9 * (0.6 * Fy_EJ * tw_EJ * d_EJ1)
 Zf_IC = bf_IC * tf_IC * (d_IC - tf_IC)
 Mn_IC_design = 0.9 * (Ry_IC * Zf_IC * Fy_IC)
 
+Lp = 1.76 * ry_EJ1 * math.sqrt(E / Fy_EJ)
 ho = d_EJ2 - tf_EJ
 J = (2 * bf_EJ * tf_EJ**3 + (d_EJ2 - 2 * tf_EJ) * tw_EJ**3) / 3
 Cw = Iy_EJ2 * ho**2 / 4
 rts = math.sqrt(math.sqrt(Iy_EJ2 * Cw) / Sx_EJ2) if Sx_EJ2 > 0 else 0
-Lp = 1.76 * ry_EJ1 * math.sqrt(E / Fy_EJ)
 Lr = 1.95 * rts * E / (0.7 * Fy_EJ) * math.sqrt(J / (Sx_EJ2 * ho) + math.sqrt((J / (Sx_EJ2 * ho))**2 + 6.76 * (0.7 * Fy_EJ / E)**2))
 
 if val_Lb <= Lp:
@@ -303,45 +303,74 @@ def detail_check(name, actual, limit, unit="", is_lower_bound=False):
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 輸出詳細檢核 UI
+# 輸出結果與 UI
 # ==========================================
 tab1, tab2, tab3, tab4 = st.tabs(["⚙️ 韌性與容量檢核", "🛡️ 加勁板設計", "🏗️ 邊界梁與交會區", "📐 設計結果與示意圖"])
 
 with tab1:
     st.subheader("1. 韌性檢核 (Ductility Checks)")
-    st.info("確保斷面在塑性轉動下不會發生過早的局部或整體挫曲。")
     detail_check("翼板寬厚比 λf", val_flange, bf_ratio_limit)
     detail_check("EJ段腹板寬厚比 λw", val_web, EJ_ratio_limit)
     detail_check("未側撐長度 Lb", val_Lb, Lmd_limit, "mm")
-    
     st.divider()
     st.subheader("2. 容量檢核 (Capacity Checks)")
-    st.info("採容量設計原則，確保 EJ 段在核心段 IC 達到極限強度時仍保持彈性。")
     detail_check("EJ段剪力 (Vmax vs φVn)", Vmax/1000, Vn_EJ_design/1000, "kN")
     detail_check("EJ段彎矩 (Mu vs φMn)", Mu_EJ_req/1000000, Mn_EJ_design/1000000, "kNm")
     detail_check("IC段彎矩 (Mu vs φMn)", Mu_IC_req/1000000, Mn_IC_design/1000000, "kNm")
 
 with tab2:
     st.subheader("3. 加勁板幾何與強度檢核")
-    st.info("檢核子板塊在大幅剪力變形下的穩定性。")
     col1, col2 = st.columns(2)
     with col1:
-        st.write("**幾何範圍限制**")
         detail_check("標準化寬厚比 λnw", lambda_nw, 0.6)
         detail_check("標準化寬厚比 λnw (下限)", lambda_nw, 0.145, is_lower_bound=True)
     with col2:
-        st.write("**勁度與厚度需求**")
         detail_check("加勁板厚度 ts", ts, max(0.75*tw_IC, 10.0), "mm", is_lower_bound=True)
         detail_check("最適加勁剛度比 rs/rs*", rs_ratio, 1.0, is_lower_bound=True)
 
 with tab3:
     st.subheader("4. 邊界構架容量設計")
-    st.info("根據核心段最大剪力 Vmax 推算梁端需求，確保塑鉸發生在間柱。")
     detail_check("邊界梁彎矩 DCR (Mb1/Mp)", dcr_beam_M, 1.0)
     detail_check("邊界梁剪力 DCR (Vb/Vn)", dcr_beam_V, 1.0)
     detail_check("交會區剪力 DCR (Vu/Vn)", dcr_PZ, 1.0)
 
 with tab4:
+    # --- 整合前三個分頁的所有詳細檢核過程 ---
+    st.subheader("📊 詳細檢核數據彙整")
+    
+    exp1 = st.expander("⚙️ 韌性與容量詳細數據", expanded=True)
+    with exp1:
+        col_duct, col_cap = st.columns(2)
+        with col_duct:
+            st.markdown("**韌性檢核**")
+            detail_check("翼板寬厚比 λf", val_flange, bf_ratio_limit)
+            detail_check("EJ腹板寬厚比 λw", val_web, EJ_ratio_limit)
+            detail_check("未側撐長度 Lb", val_Lb, Lmd_limit, "mm")
+        with col_cap:
+            st.markdown("**容量檢核**")
+            detail_check("EJ剪力 (kN)", Vmax/1000, Vn_EJ_design/1000)
+            detail_check("EJ彎矩 (kNm)", Mu_EJ_req/1000000, Mn_EJ_design/1000000)
+            detail_check("IC彎矩 (kNm)", Mu_IC_req/1000000, Mn_IC_design/1000000)
+
+    exp2 = st.expander("🛡️ 加勁板設計詳細數據", expanded=True)
+    with exp2:
+        c1, c2 = st.columns(2)
+        with c1:
+            detail_check("標準寬度比 λnw", lambda_nw, 0.6)
+            detail_check("λnw (下限)", lambda_nw, 0.145, is_lower_bound=True)
+        with c2:
+            detail_check("板厚度 ts (mm)", ts, max(0.75*tw_IC, 10.0), is_lower_bound=True)
+            detail_check("剛度比 rs/rs*", rs_ratio, 1.0, is_lower_bound=True)
+
+    exp3 = st.expander("🏗️ 邊界梁與交會區詳細數據", expanded=True)
+    with exp3:
+        detail_check("邊界梁彎矩 DCR", dcr_beam_M, 1.0)
+        detail_check("邊界梁剪力 DCR", dcr_beam_V, 1.0)
+        detail_check("交會區剪力 DCR", dcr_PZ, 1.0)
+
+    st.divider()
+
+    # --- 保留原本設計結果總覽內容 ---
     st.subheader("📝 設計結果總覽 (Summary)")
     st.markdown(f"""
     - **IC 段斷面**: `{ic_profile}`
@@ -351,7 +380,6 @@ with tab4:
     - **間柱總高度**: `{h_SYSC:.3f} m`
     """)
     
-    # 保留原本在分頁上方的快速檢核結果
     col_a, col_b, col_c = st.columns(3)
     with col_a:
         st.markdown("**⚙️ 韌性與容量設計**")
@@ -368,7 +396,7 @@ with tab4:
 
     st.divider()
 
-    # 繪製示意圖 (維持原配色)
+    # 繪製示意圖
     fig = go.Figure()
     c_flange_ic, c_flange_ej = "#FFFFFF", "#E0E0E0"
     c_web_ic, c_web_ej = "#FFF99E", "#7CB3FF"
@@ -383,7 +411,6 @@ with tab4:
     y_end_bot_s, y_end_bot_e = h_EJ_mm, y_ic_b
     y_end_top_s, y_end_top_e = y_ic_t, y_ic_t + ts_End
     
-    # 1. 柱與梁
     fig.add_shape(type="rect", x0=x_L-d_c/2, x1=x_L+d_c/2, y0=-d_b, y1=h_SYSC_mm+d_b, fillcolor=c_col, opacity=0.3, line=line_s)
     fig.add_shape(type="rect", x0=x_R-d_c/2, x1=x_R+d_c/2, y0=-d_b, y1=h_SYSC_mm+d_b, fillcolor=c_col, opacity=0.3, line=line_s)
     def draw_boundary_beam(y_start, d_bm, tf_bm, is_top=False):
@@ -397,14 +424,12 @@ with tab4:
     draw_boundary_beam(0, d_b, tf_b, is_top=False)
     draw_boundary_beam(h_SYSC_mm, d_b, tf_b, is_top=True)
 
-    # 2. Panel Zone
     for x_p in [-d_EJ2/2, d_EJ2/2]:
         fig.add_shape(type="rect", x0=x_p-tf_EJ/2, x1=x_p+tf_EJ/2, y0=-d_b+tf_b, y1=-tf_b, fillcolor=c_flange_ej, line=dict(width=0))
         fig.add_shape(type="rect", x0=x_p-tf_EJ/2, x1=x_p+tf_EJ/2, y0=h_SYSC_mm+tf_b, y1=h_SYSC_mm+d_b-tf_b, fillcolor=c_flange_ej, line=dict(width=0))
     fig.add_shape(type="rect", x0=-d_EJ2/2+tf_EJ/2, x1=d_EJ2/2-tf_EJ/2, y0=-d_b+tf_b, y1=-tf_b, fillcolor=c_pz_doubler, line=dict(width=0))
     fig.add_shape(type="rect", x0=-d_EJ2/2+tf_EJ/2, x1=d_EJ2/2-tf_EJ/2, y0=h_SYSC_mm+tf_b, y1=h_SYSC_mm+d_b-tf_b, fillcolor=c_pz_doubler, line=dict(width=0))
 
-    # 3. IC 段
     fig.add_shape(type="rect", x0=-d_IC/2, x1=-d_IC/2+tf_IC, y0=y_ic_b, y1=y_ic_t, fillcolor=c_flange_ic, line=line_s)
     fig.add_shape(type="rect", x0=d_IC/2-tf_IC, x1=d_IC/2, y0=y_ic_b, y1=y_ic_t, fillcolor=c_flange_ic, line=line_s)
     fig.add_shape(type="rect", x0=-d_IC/2+tf_IC, x1=d_IC/2-tf_IC, y0=y_ic_b, y1=y_ic_t, fillcolor=c_web_ic, line=line_s)
@@ -420,12 +445,10 @@ with tab4:
             xc = -hw_ic_net/2 + i * dx
             fig.add_shape(type="line", x0=xc, x1=xc, y0=y_ic_b, y1=y_ic_t, line=dict(color=c_stiff, width=1.5))
 
-    # 4. 端部板
     w_end = d_IC + 20.0
     fig.add_shape(type="rect", x0=-w_end/2, x1=w_end/2, y0=y_end_bot_s, y1=y_end_bot_e, fillcolor=c_end_plate, line=line_s)
     fig.add_shape(type="rect", x0=-w_end/2, x1=w_end/2, y0=y_end_top_s, y1=y_end_top_e, fillcolor=c_end_plate, line=line_s)
 
-    # 5. EJ 段
     def draw_ej_clean(ys, ye, ds, de, tfv, cw, flip=False):
         dsm, dlg = (de, ds) if flip else (ds, de)
         ysm, ylg = (ye, ys) if flip else (ys, ye)
