@@ -2,7 +2,6 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 import math
-from scipy.optimize import fsolve
 
 # --- 頁面基本設定 ---
 st.set_page_config(page_title="TP-SYSC計算機", layout="wide")
@@ -12,12 +11,17 @@ st.set_page_config(page_title="TP-SYSC計算機", layout="wide")
 # ==========================================
 st.markdown("""
 <style>
+    /* 只針對主要的文字容器設定字型，不要用 '*' */
     html, body, [data-testid="stSidebar"], .main {
         font-family: 'Calibri', sans-serif;
     }
+
+    /* 針對標籤、段落等文字調整大小 */
     p, label, li, span, .stMarkdown {
         font-size: 20px !important;
     }
+
+    /* 確保標題大小一致 */
     h1, h2, h3 {
         font-size: 20px !important;
         font-family: 'Calibri', sans-serif !important;
@@ -105,47 +109,39 @@ with st.sidebar.expander("材料性質", expanded=True):
     Fy_EJ = STEEL_DB[mat_ej_w]["Fy"]
 
 with st.sidebar.expander("TP-SYSC 高度與角度設定", expanded=True):
-    h_IC = st.number_input("核心段高度 h_IC (mm)", value=800.0, step=1.0)
-    h_EJ = st.number_input("連接段高度 h_EJ (mm)", value=900.0, step=1.0, help="單邊EJ段高度")
+    h_IC_mm = st.number_input("核心段高度 h_IC (mm)", value=800.0, step=1.0)
+    h_EJ_mm = st.number_input("連接段高度 h_EJ (mm)", value=900.0, step=1.0, help="單邊EJ段高度")
     
     ic_profile = st.selectbox("選取 IC 段 RH 斷面", list(RH_DATA.keys()), index=list(RH_DATA.keys()).index("400 X 304 X 14 X 21"))
     d_IC, bf_IC, tw_IC, tf_IC = RH_DATA[ic_profile]
 
     ts_End = st.number_input("端部加勁板厚度 ts_End (mm)", value=float(tf_IC), step=1.0)
     
-    h_EJ_mm = h_EJ
-    h_IC_mm = h_IC
+    # 幾何關聯計算
     h_SYSC_mm = (h_EJ_mm * 2) + h_IC_mm + (2 * ts_End)
     h_SYSC = h_SYSC_mm / 1000.0
 
     st.info(f"📐 計算所得間柱總高 $h_{{SYSC}}$: **{h_SYSC:.3f}** m")
 
-    angle_mode = st.radio("角度 θ 計算模式", ["由 EJ 型鋼深度自動解算", "手動輸入 θ"], index=0)
-    
-    current_theta_sol = 0.0
-    if angle_mode == "手動輸入 θ":
-        theta_deg_input = st.number_input("輸入錐形角度 θ (deg)", value=5.0, min_value=0.0, max_value=90.0, step=0.5)
-        current_theta_sol = math.radians(theta_deg_input)
+    # 直接使用手動輸入的角度
+    theta_deg = st.number_input("輸入錐形角度 θ (deg)", value=5.0, min_value=0.0, max_value=90.0, step=0.5)
+    theta_sol = math.radians(theta_deg)
 
-    # 初步篩選 EJ
+    # 根據輸入的 theta 篩選 EJ
     tw_EJ_min_req = (Omega_IC * Ry_IC * Fy_IC * tw_IC) / Fy_EJ
+    d_EJ0_min_req = (d_IC + h_EJ_mm * math.tan(theta_sol)) * math.cos(theta_sol)
 
     filtered_ej_options = []
-    d_ej1 = d_IC
-    d_ej2_req_test = d_ej1 + 2 * h_EJ_mm * math.tan(current_theta_sol)
-    d_EJ0_min_req = (d_ej1/2 + d_ej2_req_test/2) * math.cos(current_theta_sol)
-
     for name, (d_val, bf_val, tw_val, tf_val) in RH_DATA.items():
         is_width_match = abs(bf_val - bf_IC) <= 20
-        is_geo_ok = d_val >= d_EJ0_min_req if angle_mode == "手動輸入 θ" else d_val > d_IC
+        is_geo_ok = d_val >= d_EJ0_min_req
         is_strength_ok = tw_val >= tw_EJ_min_req
-        
         if is_width_match and is_geo_ok and is_strength_ok:
             filtered_ej_options.append(name)
     
     if not filtered_ej_options:
-        filtered_ej_options = [name for name, (d_val, bf_val, tw_val, tf_val) in RH_DATA.items() if (abs(bf_val - bf_IC) <= 20 and d_val > d_IC)]
-
+        filtered_ej_options = [name for name, (d_v, bf_v, tw_v, tf_v) in RH_DATA.items() if (abs(bf_v - bf_IC) <= 20 and d_v > d_IC)]
+    
     ej_profile = st.selectbox(f"選取 EJ 段 RH 斷面 (共 {len(filtered_ej_options)} 個建議項目)", filtered_ej_options)
     d_EJ0, bf_EJ, tw_EJ, tf_EJ = RH_DATA[ej_profile]
 
@@ -174,19 +170,7 @@ E = E_GPa * 1000.0
 G = E / (2 * (1 + nu))
 theta_d = target_drift / 100.0
 
-# --- 修正後的幾何解算 (解 Theta) ---
-if angle_mode == "由 EJ 型鋼深度自動解算":
-    def solve_theta(t_val):
-        return (d_IC + h_EJ_mm * math.tan(t_val)) * math.cos(t_val) - d_EJ0
-    
-    try:
-        theta_sol = fsolve(solve_theta, 0.05)[0]
-    except:
-        theta_sol = 0.0
-else:
-    theta_sol = current_theta_sol
-
-theta_deg = math.degrees(theta_sol)
+# 幾何解算
 d_EJ1 = d_IC
 d_EJ2 = d_EJ1 + 2 * h_EJ_mm * math.tan(theta_sol)
 
@@ -204,7 +188,7 @@ A_IC, Ix_IC, Iy_IC, Zx_IC, Sx_IC, ry_IC = calc_props(d_IC, bf_IC, tw_IC, tf_IC)
 A_EJ1, Ix_EJ1, Iy_EJ1, Zx_EJ1, Sx_EJ1, ry_EJ1 = calc_props(d_EJ1, bf_EJ, tw_EJ, tf_EJ)
 A_EJ2, Ix_EJ2, Iy_EJ2, Zx_EJ2, Sx_EJ2, ry_EJ2 = calc_props(d_EJ2, bf_EJ, tw_EJ, tf_EJ)
 
-# 檢核
+# 容量檢核邏輯
 Lmd_limit = 0.17 * ry_EJ1 * E / (Ry_EJ * Fy_EJ)
 bf_ratio_limit = 0.38 * math.sqrt(E / (Ry_EJ * Fy_EJ))
 EJ_ratio_limit = 2.61 * math.sqrt(E / (Ry_EJ * Fy_EJ))
@@ -223,7 +207,6 @@ Kp_IC = 1.0 / (h_IC_mm / (0.02 * G * tw_IC * d_IC) + h_IC_mm**3 / (12 * E * Ix_I
 
 Ke_F = 1.0 / (1.0 / Ke_IC + 1.0 / K_EE)
 Kp_F = 1.0 / (1.0 / Kp_IC + 1.0 / K_EE)
-Keff = Ke_F 
 
 theta_y = 0.6 * Fy_IC * tw_IC * d_IC / (Ke_F * h_SYSC_mm)
 theta_ed = (Ke_F / K_EE) * theta_y + (Kp_F / K_EE) * (theta_d - theta_y)
@@ -236,7 +219,7 @@ Zf_IC = bf_IC * tf_IC * (d_IC - tf_IC)
 Mn_IC = Ry_IC * Zf_IC * Fy_IC
 
 Lb = h_SYSC_mm
-Lp = 1.76 * ry_EJ1 * math.sqrt(E / Fy_EJ) # 使用端部半徑檢核
+Lp = 1.76 * ry_EJ1 * math.sqrt(E / Fy_EJ)
 ho = d_EJ2 - tf_EJ
 J = (2 * bf_EJ * tf_EJ**3 + (d_EJ2 - 2 * tf_EJ) * tw_EJ**3) / 3
 Cw = Iy_EJ2 * ho**2 / 4
@@ -266,10 +249,7 @@ hs_val = h_IC_mm / (nT + 1.0) if nT > 0 else h_IC_mm
 alpha_s = ds_val / hs_val
 kc = (8.95 + 5.6 / (alpha_s**2)) if alpha_s >= 1.0 else (5.6 + 8.95 / (alpha_s**2))
 lambda_nw = (hs_val / tw_IC) * math.sqrt(0.6 * Fy_Stiff / (kc * E))
-ry_stiff_prop = (0.6 * Fy_Stiff) / G
 rd = (h_SYSC_mm / h_IC_mm) * (theta_d - theta_ed)
-denominator_stiff = 2 * rd - ry_stiff_prop
-hs_tw_limit = math.sqrt(8.5 * kc / denominator_stiff) if denominator_stiff > 0 else 200.0
 hs_tw_actual = hs_val / tw_IC
 D_plate = E * tw_IC**3 / (12.0 * (1.0 - nu**2))
 Is_stiff = ts * bs**3 / 3.0
@@ -278,7 +258,7 @@ alpha_s_log = np.log10(alpha_s) if alpha_s > 0 else 0
 rs_star = 152.7 * alpha_s_log**2 + 21.14 * alpha_s_log + 26.34
 rs_ratio = rs_stiff / rs_star if rs_star > 0 else 0
 
-# 邊界梁
+# 邊界梁需求
 L_b_mm = L_b * 1000.0
 Zx_beam = bf_b * tf_b * (d_b - tf_b) + tw_b * (d_b / 2 - tf_b)**2
 Mp_beam = Zx_beam * Fy_beam
@@ -317,14 +297,14 @@ with tab1:
     st.markdown(f"""
     - **標稱剪力強度 $V_y$**: {Vn_IC/1000:.0f} kN
     - **極限設計剪力 $V_{{max}}$**: {Vmax/1000:.0f} kN
-    - **等效彈性勁度 $K_{{eff}}$**: {Keff/1000:.1f} kN/mm
-    - **計算所得角度 θ**: {theta_deg:.2f}°
+    - **等效彈性勁度 $K_{{eff}}$**: {Ke_F/1000:.1f} kN/mm
+    - **輸入錐形角度 θ**: {theta_deg:.2f}°
     """)
     st.divider()
     st.subheader("韌性設計")
-    st.markdown(check_item("翼板寬厚比", f"{val_flange:.1f} ≤ {bf_ratio_limit:.1f}", val_flange <= bf_ratio_limit), unsafe_allow_html=True)
-    st.markdown(check_item("EJ段腹板寬厚比", f"{val_web:.1f} ≤ {EJ_ratio_limit:.1f}", val_web <= EJ_ratio_limit), unsafe_allow_html=True)
-    st.markdown(check_item("未側撐長度 Lb", f"{val_Lb:.0f} ≤ {Lmd_limit:.0f}", val_Lb <= Lmd_limit), unsafe_allow_html=True)
+    st.markdown(check_item("翼板寬厚比", f"{val_flange:.1f}", val_flange <= bf_ratio_limit), unsafe_allow_html=True)
+    st.markdown(check_item("EJ段腹板寬厚比", f"{val_web:.1f}", val_web <= EJ_ratio_limit), unsafe_allow_html=True)
+    st.markdown(check_item("未側撐長度 Lb", f"{val_Lb:.0f}", val_Lb <= Lmd_limit), unsafe_allow_html=True)
     st.subheader("容量設計")
     st.markdown(check_item("EJ段剪力容量", f"DCR = {format_dcr(dcr_V_EJ)}", dcr_V_EJ <= 1.0), unsafe_allow_html=True)
     st.markdown(check_item("EJ段彎矩容量", f"DCR = {format_dcr(dcr_M_EJ)}", dcr_M_EJ <= 1.0), unsafe_allow_html=True)
@@ -334,8 +314,7 @@ with tab2:
     st.subheader("加勁板設計檢核")
     st.markdown(f"- **子板塊寬高比 αs**: {alpha_s:.2f}")
     st.markdown(check_item("子板塊標準化寬厚比 λnw", f"{lambda_nw:.3f}", 0.145 <= lambda_nw <= 0.6), unsafe_allow_html=True)
-    st.markdown(check_item("子板塊寬厚比 hs/tw", f"{hs_tw_actual:.1f} ≤ {hs_tw_limit:.1f}", hs_tw_actual <= hs_tw_limit), unsafe_allow_html=True)
-    st.markdown(check_item("加勁板厚度 ts", f"{ts:.1f} ≥ {max(0.75*tw_IC, 10.0):.1f}", ts >= max(0.75*tw_IC, 10.0)), unsafe_allow_html=True)
+    st.markdown(check_item("加勁板厚度 ts", f"{ts:.1f}", ts >= max(0.75*tw_IC, 10.0)), unsafe_allow_html=True)
     st.markdown(check_item("最適加勁剛度比 rs/rs*", f"{rs_ratio:.2f} ≥ 1.0", rs_ratio >= 1.0), unsafe_allow_html=True)
 
 with tab3:
