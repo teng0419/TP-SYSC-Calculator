@@ -124,7 +124,7 @@ with st.sidebar.expander("TP-SYSC 高度與角度設定", expanded=True):
     st.info(f"📐 計算所得間柱總高 $h_{{SYSC}}$: **{h_SYSC:.3f}** m")
 
     # 直接使用手動輸入的角度
-    theta_deg = st.number_input("輸入錐形角度 θ (deg)", value=5.0, min_value=0.0, max_value=90.0, step=0.5)
+    theta_deg = st.number_input("輸入錐形角度 θ (deg)", value=5.0, min_value=0.0, max_value=90.0, step=0.01)
     theta_sol = math.radians(theta_deg)
 
     # 根據輸入的 theta 篩選 EJ
@@ -425,5 +425,6 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
 
