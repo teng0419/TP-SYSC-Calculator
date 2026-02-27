@@ -176,9 +176,6 @@ theta_d = target_drift / 100.0
 
 # --- 修正後的幾何解算 (解 Theta) ---
 if angle_mode == "由 EJ 型鋼深度自動解算":
-    # 方程式: EJ型鋼標稱深度 d_EJ0 = (垂直深度的平均值) * cos(theta)
-    # 垂直深度 d(y) = d_IC + 2*y*tan(theta)
-    # 垂直平均深度 d_avg = d_IC + h_EJ * tan(theta)
     def solve_theta(t_val):
         return (d_IC + h_EJ_mm * math.tan(t_val)) * math.cos(t_val) - d_EJ0
     
@@ -263,6 +260,7 @@ dcr_M_EJ = Mu_EJ / (0.9 * Mn_EJ)
 dcr_M_IC = Mu_IC / (0.9 * Mn_IC)
 
 # 加勁板
+nL, nT = n_v, n_h
 ds_val = (d_IC - 2 * tf_IC) / (nL + 1.0) if nL > 0 else (d_IC - 2 * tf_IC)
 hs_val = h_IC_mm / (nT + 1.0) if nT > 0 else h_IC_mm
 alpha_s = ds_val / hs_val
