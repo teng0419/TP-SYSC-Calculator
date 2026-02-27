@@ -256,11 +256,16 @@ alpha_s_log = np.log10(alpha_s) if alpha_s > 0 else 0
 rs_star = 152.7 * alpha_s_log**2 + 21.14 * alpha_s_log + 26.34
 rs_ratio = rs_stiff / rs_star
 
-# 邊界梁
+# 邊界梁與需求計算
 L_b_mm = L_b * 1000.0
 Zx_beam = bf_b * tf_b * (d_b - tf_b) + tw_b * (d_b / 2 - tf_b)**2
 Mp_beam = Zx_beam * Fy_beam
 Vn_beam = 0.6 * Fy_beam * d_b * tw_b
+
+# 修正：定義 V_ult 以避免 NameError
+omega_beam = 1.1
+V_ult = omega_beam * Ry_IC * Vn_IC
+
 L_prime = (L_b_mm - d_EJ2 - d_c) / 2.0 
 M_b2 = 1.1 * Mp_beam
 M_b1 = (V_ult * (h_SYSC_mm / 2.0 + d_b / 2.0) - M_b2 * (d_EJ2 / (2.0 * L_prime))) / (1.0 + (d_EJ2 / (2.0 * L_prime)))
