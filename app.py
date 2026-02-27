@@ -8,15 +8,25 @@ from scipy.optimize import fsolve
 st.set_page_config(page_title="TP-SYSC計算機", layout="wide")
 
 # ==========================================
-# 注入自訂 CSS
+# 注入自訂 CSS：精準控制字型，避開內建 Icon
 # ==========================================
 st.markdown("""
 <style>
-    * { font-family: 'Calibri', sans-serif !important; }
-    p, label, li, span { font-size: 18px !important; }
-    h1 { font-size: 24px !important; }
-    h2 { font-size: 22px !important; }
-    h3 { font-size: 20px !important; }
+    /* 1. 只針對主要的文字容器設定字型，不要用 '*' */
+    html, body, [data-testid="stSidebar"], .main {
+        font-family: 'Calibri', sans-serif;
+    }
+
+    /* 2. 針對標籤、段落等文字調整大小，移除對 Icon 的影響 */
+    p, label, li, span, .stMarkdown {
+        font-size: 20px !important;
+    }
+
+    /* 3. 確保標題大小一致 */
+    h1, h2, h3 {
+        font-size: 20px !important;
+        font-family: 'Calibri', sans-serif !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -486,3 +496,4 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
