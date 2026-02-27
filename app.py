@@ -329,7 +329,7 @@ with tab4:
     - **IC 段斷面**: {ic_profile}
     - **EJ 段型鋼**: {ej_profile}
     - **錐形角度 θ**: {theta_deg:.2f}°
-    - **EJ 端部深度 $d_{{EJ2}}$**: **{d_EJ:.1f}** mm
+    - **EJ 端部深度 $d_{{EJ}}$**: **{d_EJ2:.1f}** mm
     - **間柱總高度**: {h_SYSC:.3f} m
     """)
     col_a, col_b, col_c = st.columns(3)
@@ -425,4 +425,5 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
