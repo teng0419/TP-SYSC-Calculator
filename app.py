@@ -8,21 +8,16 @@ from scipy.optimize import fsolve
 st.set_page_config(page_title="TP-SYSC計算機", layout="wide")
 
 # ==========================================
-# 注入自訂 CSS：精準控制字型，避開內建 Icon
+# 注入自訂 CSS：精準控制字型，避開內建 Icon 亂碼
 # ==========================================
 st.markdown("""
 <style>
-    /* 1. 只針對主要的文字容器設定字型，不要用 '*' */
     html, body, [data-testid="stSidebar"], .main {
         font-family: 'Calibri', sans-serif;
     }
-
-    /* 2. 針對標籤、段落等文字調整大小，移除對 Icon 的影響 */
     p, label, li, span, .stMarkdown {
         font-size: 20px !important;
     }
-
-    /* 3. 確保標題大小一致 */
     h1, h2, h3 {
         font-size: 20px !important;
         font-family: 'Calibri', sans-serif !important;
@@ -104,7 +99,6 @@ with st.sidebar.expander("材料性質", expanded=True):
     E_GPa = st.number_input("楊氏模數 E (GPa)", value=200.0, step=1.0)
     nu = 0.3
     
-    # --- 重要修正：預先取得材料參數以便後續篩選 ---
     Fy_IC = STEEL_DB[mat_ic_w]["Fy"]
     Ry_IC = STEEL_DB[mat_ic_w]["Ry"]
     Omega_IC = STEEL_DB[mat_ic_w]["Omega"]
@@ -119,7 +113,6 @@ with st.sidebar.expander("TP-SYSC 高度與角度設定", expanded=True):
 
     ts_End = st.number_input("端部加勁板厚度 ts_End (mm)", value=float(tf_IC), step=1.0)
     
-    # 幾何關聯計算
     h_EJ_mm = h_EJ
     h_IC_mm = h_IC
     h_SYSC_mm = (h_EJ_mm * 2) + h_IC_mm + (2 * ts_End)
@@ -134,7 +127,7 @@ with st.sidebar.expander("TP-SYSC 高度與角度設定", expanded=True):
         theta_deg_input = st.number_input("輸入錐形角度 θ (deg)", value=5.0, min_value=0.0, max_value=90.0, step=0.5)
         current_theta_sol = math.radians(theta_deg_input)
 
-    # --- 初步篩選 EJ ---
+    # 初步篩選 EJ
     tw_EJ_min_req = (Omega_IC * Ry_IC * Fy_IC * tw_IC) / Fy_EJ
 
     filtered_ej_options = []
@@ -142,21 +135,18 @@ with st.sidebar.expander("TP-SYSC 高度與角度設定", expanded=True):
     d_ej2_req_test = d_ej1 + 2 * h_EJ_mm * math.tan(current_theta_sol)
     d_EJ0_min_req = (d_ej1/2 + d_ej2_req_test/2) * math.cos(current_theta_sol)
 
-    for name, (d, bf, tw, tf) in RH_DATA.items():
-        is_width_match = abs(bf - bf_IC) <= 20
-        is_geo_ok = d >= d_EJ0_min_req if angle_mode == "手動輸入 θ" else d > d_IC
-        is_strength_ok = tw >= tw_EJ_min_req # 自動篩選厚度功能
+    for name, (d_val, bf_val, tw_val, tf_val) in RH_DATA.items():
+        is_width_match = abs(bf_val - bf_IC) <= 20
+        is_geo_ok = d_val >= d_EJ0_min_req if angle_mode == "手動輸入 θ" else d_val > d_IC
+        is_strength_ok = tw_val >= tw_EJ_min_req
         
         if is_width_match and is_geo_ok and is_strength_ok:
             filtered_ej_options.append(name)
     
     if not filtered_ej_options:
-        st.warning("⚠️ 依厚度篩選後無符合選項，已自動顯示所有幾何符合之型鋼。")
-        filtered_ej_options = [name for name, (d, bf, tw, tf) in RH_DATA.items() if (abs(bf - bf_IC) <= 20 and d > d_IC)]
+        filtered_ej_options = [name for name, (d_val, bf_val, tw_val, tf_val) in RH_DATA.items() if (abs(bf_val - bf_IC) <= 20 and d_val > d_IC)]
 
     ej_profile = st.selectbox(f"選取 EJ 段 RH 斷面 (共 {len(filtered_ej_options)} 個建議項目)", filtered_ej_options)
-    
-    # --- 重要修正：立即解析 EJ 參數避免 NameError ---
     d_EJ0, bf_EJ, tw_EJ, tf_EJ = RH_DATA[ej_profile]
 
 with st.sidebar.expander("加勁板配置"):
@@ -174,9 +164,8 @@ with st.sidebar.expander("邊界構架尺寸"):
     t_dp = st.number_input("交會區貼板厚度 t_dp (mm)", value=15.0, step=1.0)
 
 # ==========================================
-# 核心力學引擎 (TP-SYSC 精確版)
+# 核心力學引擎
 # ==========================================
-# 1. 取得其他材料參數
 Ry_EJ = STEEL_DB[mat_ej_w]["Ry"]
 Fy_Stiff = STEEL_DB[mat_stiff]["Fy"]
 Fy_beam = STEEL_DB[mat_beam]["Fy"]
@@ -185,14 +174,16 @@ E = E_GPa * 1000.0
 G = E / (2 * (1 + nu))
 theta_d = target_drift / 100.0
 
-# 2. 幾何解算 (解 Theta)
+# --- 修正後的幾何解算 (解 Theta) ---
 if angle_mode == "由 EJ 型鋼深度自動解算":
-    def solve_theta(theta_val):
-        d_ej1_local = d_IC
-        d_ej2_local = d_ej1_local + 2 * h_EJ_mm * math.tan(theta_val)
-        return (d_ej1_local / 2 + d_ej2_local / 2) - (d_EJ0 / math.cos(theta_val))
+    # 方程式: EJ型鋼標稱深度 d_EJ0 = (垂直深度的平均值) * cos(theta)
+    # 垂直深度 d(y) = d_IC + 2*y*tan(theta)
+    # 垂直平均深度 d_avg = d_IC + h_EJ * tan(theta)
+    def solve_theta(t_val):
+        return (d_IC + h_EJ_mm * math.tan(t_val)) * math.cos(t_val) - d_EJ0
+    
     try:
-        theta_sol = fsolve(solve_theta, 0.1)[0]
+        theta_sol = fsolve(solve_theta, 0.05)[0]
     except:
         theta_sol = 0.0
 else:
@@ -202,7 +193,7 @@ theta_deg = math.degrees(theta_sol)
 d_EJ1 = d_IC
 d_EJ2 = d_EJ1 + 2 * h_EJ_mm * math.tan(theta_sol)
 
-# 3. 斷面性質計算
+# 斷面性質計算
 def calc_props(d_val, bf_val, tw_val, tf_val):
     A = tf_val * bf_val * 2 + (d_val - 2 * tf_val) * tw_val
     Ix = 1/12 * (bf_val * d_val**3 - (bf_val - tw_val) * (d_val - 2 * tf_val)**3)
@@ -216,7 +207,7 @@ A_IC, Ix_IC, Iy_IC, Zx_IC, Sx_IC, ry_IC = calc_props(d_IC, bf_IC, tw_IC, tf_IC)
 A_EJ1, Ix_EJ1, Iy_EJ1, Zx_EJ1, Sx_EJ1, ry_EJ1 = calc_props(d_EJ1, bf_EJ, tw_EJ, tf_EJ)
 A_EJ2, Ix_EJ2, Iy_EJ2, Zx_EJ2, Sx_EJ2, ry_EJ2 = calc_props(d_EJ2, bf_EJ, tw_EJ, tf_EJ)
 
-# 4. 韌性設計檢核極限
+# 檢核
 Lmd_limit = 0.17 * ry_EJ1 * E / (Ry_EJ * Fy_EJ)
 bf_ratio_limit = 0.38 * math.sqrt(E / (Ry_EJ * Fy_EJ))
 EJ_ratio_limit = 2.61 * math.sqrt(E / (Ry_EJ * Fy_EJ))
@@ -225,7 +216,6 @@ val_flange = bf_EJ / (2 * tf_EJ)
 val_web = (d_EJ2 - 2 * tf_EJ) / tw_EJ
 val_Lb = h_SYSC_mm
 
-# 5. 勁度計算
 Ix_EJ_avg = (Ix_EJ1 + Ix_EJ2) / 2.0
 d_EJ_avg = (d_EJ1 + d_EJ2) / 2.0
 
@@ -241,7 +231,6 @@ Keff = Ke_F
 theta_y = 0.6 * Fy_IC * tw_IC * d_IC / (Ke_F * h_SYSC_mm)
 theta_ed = (Ke_F / K_EE) * theta_y + (Kp_F / K_EE) * (theta_d - theta_y)
 
-# 6. 容量設計檢核
 Vn_IC = 0.6 * Fy_IC * tw_IC * d_IC
 Vmax = Omega_IC * Ry_IC * Vn_IC 
 Vn_EJ = 0.6 * Fy_EJ * tw_EJ * d_EJ1 
@@ -249,9 +238,8 @@ Vn_EJ = 0.6 * Fy_EJ * tw_EJ * d_EJ1
 Zf_IC = bf_IC * tf_IC * (d_IC - tf_IC)
 Mn_IC = Ry_IC * Zf_IC * Fy_IC
 
-# LTB 檢核
 Lb = h_SYSC_mm
-Lp = 1.76 * ry_EJ2 * math.sqrt(E / Fy_EJ)
+Lp = 1.76 * ry_EJ1 * math.sqrt(E / Fy_EJ) # 使用端部半徑檢核
 ho = d_EJ2 - tf_EJ
 J = (2 * bf_EJ * tf_EJ**3 + (d_EJ2 - 2 * tf_EJ) * tw_EJ**3) / 3
 Cw = Iy_EJ2 * ho**2 / 4
@@ -261,7 +249,6 @@ Lr = 1.95 * rts * E / (0.7 * Fy_EJ) * math.sqrt(J / (Sx_EJ2 * ho) + math.sqrt((J
 if Lb <= Lp:
     M_EJ = Zx_EJ2 * Fy_EJ
 else:
-    # 簡化 Lr 可能無解情況
     if Lr > Lp:
         M_EJ = 2.3 * (Zx_EJ2 * Fy_EJ - (Zx_EJ2 * Fy_EJ - 0.7 * Fy_EJ * Sx_EJ2) * ((Lb - Lp) / (Lr - Lp)))
     else:
@@ -275,20 +262,17 @@ dcr_V_EJ = Vmax / (0.9 * Vn_EJ)
 dcr_M_EJ = Mu_EJ / (0.9 * Mn_EJ)
 dcr_M_IC = Mu_IC / (0.9 * Mn_IC)
 
-# 7. 加勁板設計
-nL, nT = n_v, n_h
+# 加勁板
 ds_val = (d_IC - 2 * tf_IC) / (nL + 1.0) if nL > 0 else (d_IC - 2 * tf_IC)
 hs_val = h_IC_mm / (nT + 1.0) if nT > 0 else h_IC_mm
 alpha_s = ds_val / hs_val
 kc = (8.95 + 5.6 / (alpha_s**2)) if alpha_s >= 1.0 else (5.6 + 8.95 / (alpha_s**2))
 lambda_nw = (hs_val / tw_IC) * math.sqrt(0.6 * Fy_Stiff / (kc * E))
-
 ry_stiff_prop = (0.6 * Fy_Stiff) / G
 rd = (h_SYSC_mm / h_IC_mm) * (theta_d - theta_ed)
 denominator_stiff = 2 * rd - ry_stiff_prop
 hs_tw_limit = math.sqrt(8.5 * kc / denominator_stiff) if denominator_stiff > 0 else 200.0
 hs_tw_actual = hs_val / tw_IC
-
 D_plate = E * tw_IC**3 / (12.0 * (1.0 - nu**2))
 Is_stiff = ts * bs**3 / 3.0
 rs_stiff = E * Is_stiff / (h_IC_mm * D_plate)
@@ -296,12 +280,11 @@ alpha_s_log = np.log10(alpha_s) if alpha_s > 0 else 0
 rs_star = 152.7 * alpha_s_log**2 + 21.14 * alpha_s_log + 26.34
 rs_ratio = rs_stiff / rs_star if rs_star > 0 else 0
 
-# 8. 邊界梁與交會區
+# 邊界梁
 L_b_mm = L_b * 1000.0
 Zx_beam = bf_b * tf_b * (d_b - tf_b) + tw_b * (d_b / 2 - tf_b)**2
 Mp_beam = Zx_beam * Fy_beam
 Vn_beam = 0.6 * Fy_beam * d_b * tw_b
-
 omega_beam = 1.1
 V_ult = omega_beam * Ry_IC * Vn_IC
 L_prime = (L_b_mm - d_EJ2 - d_c) / 2.0 
@@ -311,7 +294,6 @@ term_Mb2 = M_b2 * (d_EJ2 / (2.0 * L_prime))
 denom_Mb1 = 1.0 + (d_EJ2 / (2.0 * L_prime))
 M_b1 = (term_Vult - term_Mb2) / denom_Mb1
 V_b = (M_b1 + M_b2) / L_prime
-
 dcr_beam_M = M_b1 / Mp_beam
 dcr_beam_V = V_b / Vn_beam
 V_u_PZ = (V_ult * h_SYSC_mm / (d_EJ2 - tf_EJ)) - V_b
@@ -319,7 +301,7 @@ V_n_PZ = 0.6 * Fy_beam * d_b * (tw_b + t_dp)
 dcr_PZ = V_u_PZ / (1.0 * V_n_PZ)
 
 # ==========================================
-# 輸出結果與 UI
+# 輸出 UI
 # ==========================================
 def format_dcr(x):
     if x == 0 or np.isnan(x): return "0.00"
@@ -341,159 +323,128 @@ with tab1:
     - **計算所得角度 θ**: {theta_deg:.2f}°
     """)
     st.divider()
-    st.subheader("韌性設計 (Ductile Design Checks)")
+    st.subheader("韌性設計")
     st.markdown(check_item("翼板寬厚比", f"{val_flange:.1f} ≤ {bf_ratio_limit:.1f}", val_flange <= bf_ratio_limit), unsafe_allow_html=True)
     st.markdown(check_item("EJ段腹板寬厚比", f"{val_web:.1f} ≤ {EJ_ratio_limit:.1f}", val_web <= EJ_ratio_limit), unsafe_allow_html=True)
     st.markdown(check_item("未側撐長度 Lb", f"{val_Lb:.0f} ≤ {Lmd_limit:.0f}", val_Lb <= Lmd_limit), unsafe_allow_html=True)
-    st.subheader("容量設計 (Capacity Design Checks)")
+    st.subheader("容量設計")
     st.markdown(check_item("EJ段剪力容量", f"DCR = {format_dcr(dcr_V_EJ)}", dcr_V_EJ <= 1.0), unsafe_allow_html=True)
     st.markdown(check_item("EJ段彎矩容量", f"DCR = {format_dcr(dcr_M_EJ)}", dcr_M_EJ <= 1.0), unsafe_allow_html=True)
     st.markdown(check_item("IC段彎矩容量", f"DCR = {format_dcr(dcr_M_IC)}", dcr_M_IC <= 1.0), unsafe_allow_html=True)
 
 with tab2:
     st.subheader("加勁板設計檢核")
-    st.markdown(f"- **子板塊寬高比 αs**: {alpha_s:.2f} (建議 0.5 ~ 2.0)")
-    st.markdown(check_item("子板塊標準化寬厚比 λnw", f"{lambda_nw:.3f} (0.145~0.6)", 0.145 <= lambda_nw <= 0.6), unsafe_allow_html=True)
+    st.markdown(f"- **子板塊寬高比 αs**: {alpha_s:.2f}")
+    st.markdown(check_item("子板塊標準化寬厚比 λnw", f"{lambda_nw:.3f}", 0.145 <= lambda_nw <= 0.6), unsafe_allow_html=True)
     st.markdown(check_item("子板塊寬厚比 hs/tw", f"{hs_tw_actual:.1f} ≤ {hs_tw_limit:.1f}", hs_tw_actual <= hs_tw_limit), unsafe_allow_html=True)
     st.markdown(check_item("加勁板厚度 ts", f"{ts:.1f} ≥ {max(0.75*tw_IC, 10.0):.1f}", ts >= max(0.75*tw_IC, 10.0)), unsafe_allow_html=True)
     st.markdown(check_item("最適加勁剛度比 rs/rs*", f"{rs_ratio:.2f} ≥ 1.0", rs_ratio >= 1.0), unsafe_allow_html=True)
 
 with tab3:
-    st.subheader("邊界梁能力設計")
-    st.markdown(f"- **邊界梁淨跨距 L'**: {L_prime:.0f} mm")
-    st.markdown(check_item("邊界梁彎矩容量 (Mb1)", f"DCR = {format_dcr(dcr_beam_M)}", dcr_beam_M <= 1.0), unsafe_allow_html=True)
-    st.markdown(check_item("邊界梁剪力容量 (Vb)", f"DCR = {format_dcr(dcr_beam_V)}", dcr_beam_V <= 1.0), unsafe_allow_html=True)
-    st.divider()
-    st.subheader("接頭區 (Panel Zone)")
-    st.markdown(check_item("交會區剪力容量", f"DCR = {format_dcr(dcr_PZ)}", dcr_PZ <= 1.0), unsafe_allow_html=True)
+    st.subheader("邊界梁與交會區")
+    st.markdown(check_item("邊界梁彎矩 (Mb1)", f"DCR = {format_dcr(dcr_beam_M)}", dcr_beam_M <= 1.0), unsafe_allow_html=True)
+    st.markdown(check_item("邊界梁剪力 (Vb)", f"DCR = {format_dcr(dcr_beam_V)}", dcr_beam_V <= 1.0), unsafe_allow_html=True)
+    st.markdown(check_item("交會區剪力", f"DCR = {format_dcr(dcr_PZ)}", dcr_PZ <= 1.0), unsafe_allow_html=True)
 
 with tab4:
     st.subheader("📝 設計結果總覽 (Summary)")
     st.markdown(f"""
     - **IC 段斷面**: {ic_profile}
-    - **EJ 段型鋼**: {ej_profile} (θ = {theta_deg:.2f}°)
-    - **邊界梁尺寸**: {rh_beam}
+    - **EJ 段型鋼**: {ej_profile}
+    - **錐形角度 θ**: {theta_deg:.2f}°
+    - **EJ 端部深度 $d_{{EJ2}}$**: **{d_EJ2:.1f}** mm
     - **間柱總高度**: {h_SYSC:.3f} m
     """)
     col_a, col_b, col_c = st.columns(3)
     with col_a:
-        st.markdown("**⚙️ 韌性設計與容量設計**")
-        st.markdown(check_item("翼板寬厚比", f"{val_flange:.1f}", val_flange <= bf_ratio_limit), unsafe_allow_html=True)
-        st.markdown(check_item("EJ段剪力 DCR", format_dcr(dcr_V_EJ), dcr_V_EJ <= 1.0), unsafe_allow_html=True)
-        st.markdown(check_item("EJ段彎矩 DCR", format_dcr(dcr_M_EJ), dcr_M_EJ <= 1.0), unsafe_allow_html=True)
+        st.markdown("**⚙️ 韌性與容量設計**")
+        st.markdown(check_item("EJ剪力 DCR", format_dcr(dcr_V_EJ), dcr_V_EJ <= 1.0), unsafe_allow_html=True)
+        st.markdown(check_item("EJ彎矩 DCR", format_dcr(dcr_M_EJ), dcr_M_EJ <= 1.0), unsafe_allow_html=True)
     with col_b:
         st.markdown("**🛡️ 加勁板設計**")
-        st.markdown(check_item("子板塊標準寬厚比 λnw", f"{lambda_nw:.3f}", 0.145 <= lambda_nw <= 0.6), unsafe_allow_html=True)
-        st.markdown(check_item("最適加勁剛度比 rs/rs*", format_dcr(rs_ratio), rs_ratio >= 1.0), unsafe_allow_html=True)
+        st.markdown(check_item("λnw 檢核", f"{lambda_nw:.3f}", 0.145 <= lambda_nw <= 0.6), unsafe_allow_html=True)
+        st.markdown(check_item("rs/rs* 剛度比", format_dcr(rs_ratio), rs_ratio >= 1.0), unsafe_allow_html=True)
     with col_c:
-        st.markdown("**🏗️ 邊界梁容量設計**")
+        st.markdown("**🏗️ 邊界梁與交會區**")
         st.markdown(check_item("梁彎矩 DCR", format_dcr(dcr_beam_M), dcr_beam_M <= 1.0), unsafe_allow_html=True)
         st.markdown(check_item("交會區 DCR", format_dcr(dcr_PZ), dcr_PZ <= 1.0), unsafe_allow_html=True)
 
     # 繪製示意圖
     fig = go.Figure()
-    # --- 以初始設定為基礎，優化主角(間柱)細節 ---
-    c_flange_ic   = "#FFFFFF"  # 翼板改為純白，強調主角輪廓
-    c_flange_ej   = "#E0E0E0"# 翼板改為純白，強調主角輪廓
-    c_web_ic      = "#FFF99E"  # 核心腹板 (維持你偏好的藍色)
-    c_web_ej      = "#7CB3FF"  # 連接腹板 (維持你偏好的螢光綠)
-    c_stiff       = "#222222"  # 加勁板改為金黃色，增加內部構造辨識度
-    c_beam_web    = "#444444"  # 邊界梁腹板調暗，降低存在感
-    c_beam_flange = "#333333"  # 邊界梁翼板調暗
-    c_col         = "#444444"  # 柱體調暗，退為背景
-    c_pz_doubler  = "#777777"  # 接頭區弱化
-    c_end_plate   = "#F28500"  # 端部板 (維持原樣)
-
-    # --- 線條設定微調 ---
-    line_s = dict(color="white", width=0.0) # 調細輪廓線，讓畫面更精緻
+    c_flange_ic   = "#FFFFFF"
+    c_flange_ej   = "#E0E0E0"
+    c_web_ic      = "#FFF99E"
+    c_web_ej      = "#7CB3FF"
+    c_stiff       = "#222222"
+    c_beam_web    = "#444444"
+    c_beam_flange = "#333333"
+    c_col         = "#444444"
+    c_pz_doubler  = "#777777"
+    c_end_plate   = "#F28500"
+    line_s = dict(color="white", width=0.0)
 
     x_L, x_R = -L_b*1000/2, L_b*1000/2
-    
-    # Y 座標基準
     y_ic_b = h_EJ_mm + ts_End
     y_ic_t = y_ic_b + h_IC_mm
     y_end_bot_s, y_end_bot_e = h_EJ_mm, y_ic_b
     y_end_top_s, y_end_top_e = y_ic_t, y_ic_t + ts_End
     
-    # 1. 繪製左右柱
+    # 柱與梁
     fig.add_shape(type="rect", x0=x_L-d_c/2, x1=x_L+d_c/2, y0=-d_b, y1=h_SYSC_mm+d_b, fillcolor=c_col, opacity=0.3, line=line_s)
     fig.add_shape(type="rect", x0=x_R-d_c/2, x1=x_R+d_c/2, y0=-d_b, y1=h_SYSC_mm+d_b, fillcolor=c_col, opacity=0.3, line=line_s)
-
-    # 2. 繪製上下邊界梁 (細節：翼板與腹板)
     def draw_boundary_beam(y_start, d_beam, tf_beam, is_top=False):
-        y_sign = 1 if is_top else -1
-        # 下翼板
         y_f1_s = y_start + (d_beam if is_top else -d_beam)
         y_f1_e = y_f1_s + (tf_beam if not is_top else -tf_beam)
         fig.add_shape(type="rect", x0=x_L+d_c/2, x1=x_R-d_c/2, y0=y_f1_s, y1=y_f1_e, fillcolor=c_beam_flange, line=line_s)
-        # 上翼板
         y_f2_s = y_start
         y_f2_e = y_f2_s + (-tf_beam if not is_top else tf_beam)
         fig.add_shape(type="rect", x0=x_L+d_c/2, x1=x_R-d_c/2, y0=y_f2_s, y1=y_f2_e, fillcolor=c_beam_flange, line=line_s)
-        # 腹板
         fig.add_shape(type="rect", x0=x_L+d_c/2, x1=x_R-d_c/2, y0=y_f1_e, y1=y_f2_e, fillcolor=c_beam_web, line=line_s)
-
     draw_boundary_beam(0, d_b, tf_b, is_top=False)
     draw_boundary_beam(h_SYSC_mm, d_b, tf_b, is_top=True)
 
-    # 3. 繪製 Panel Zone 結構
-    # 垂直加勁板 (Continuity Plates, 距離 d_EJ2, 厚度 tf_EJ, 淨高 = d_b - 2*tf_b)
-    stiff_height = d_b - 2 * tf_b
+    # Panel Zone
     for x_p in [-d_EJ2/2, d_EJ2/2]:
-        # 下交會區加勁板
         fig.add_shape(type="rect", x0=x_p-tf_EJ/2, x1=x_p+tf_EJ/2, y0=-d_b+tf_b, y1=-tf_b, fillcolor=c_flange_ej, line=dict(width=0))
-        # 上交會區加勁板
         fig.add_shape(type="rect", x0=x_p-tf_EJ/2, x1=x_p+tf_EJ/2, y0=h_SYSC_mm+tf_b, y1=h_SYSC_mm+d_b-tf_b, fillcolor=c_flange_ej, line=dict(width=0))
-    
-    # 貼板 (Doubler Plate): 位於垂直加勁板之間的梁腹處
     fig.add_shape(type="rect", x0=-d_EJ2/2+tf_EJ/2, x1=d_EJ2/2-tf_EJ/2, y0=-d_b+tf_b, y1=-tf_b, fillcolor=c_pz_doubler, line=dict(width=0))
     fig.add_shape(type="rect", x0=-d_EJ2/2+tf_EJ/2, x1=d_EJ2/2-tf_EJ/2, y0=h_SYSC_mm+tf_b, y1=h_SYSC_mm+d_b-tf_b, fillcolor=c_pz_doubler, line=dict(width=0))
 
-    # 4. 繪製 IC 段與內部的橫/縱向加勁板
-    # IC 實體
+    # IC 段
     fig.add_shape(type="rect", x0=-d_IC/2, x1=-d_IC/2+tf_IC, y0=y_ic_b, y1=y_ic_t, fillcolor=c_flange_ic, line=line_s)
     fig.add_shape(type="rect", x0=d_IC/2-tf_IC, x1=d_IC/2, y0=y_ic_b, y1=y_ic_t, fillcolor=c_flange_ic, line=line_s)
     fig.add_shape(type="rect", x0=-d_IC/2+tf_IC, x1=d_IC/2-tf_IC, y0=y_ic_b, y1=y_ic_t, fillcolor=c_web_ic, line=line_s)
-    
-    # 內部加勁板繪製
     hw_ic_net = d_IC - 2 * tf_IC
-    # 橫向 (nT)
     if nT > 0:
         dy = h_IC_mm / (nT + 1)
         for i in range(1, int(nT) + 1):
             yc = y_ic_b + i * dy
             fig.add_shape(type="line", x0=-hw_ic_net/2, x1=hw_ic_net/2, y0=yc, y1=yc, line=dict(color=c_stiff, width=1.5))
-    # 縱向 (nL)
     if nL > 0:
         dx = hw_ic_net / (nL + 1)
         for i in range(1, int(nL) + 1):
             xc = -hw_ic_net/2 + i * dx
             fig.add_shape(type="line", x0=xc, x1=xc, y0=y_ic_b, y1=y_ic_t, line=dict(color=c_stiff, width=1.5))
 
-    # 5. 端部加勁板 (綠色，寬度 d_IC + 20)
+    # 端部板
     w_end = d_IC + 20.0
     fig.add_shape(type="rect", x0=-w_end/2, x1=w_end/2, y0=y_end_bot_s, y1=y_end_bot_e, fillcolor=c_end_plate, line=line_s)
     fig.add_shape(type="rect", x0=-w_end/2, x1=w_end/2, y0=y_end_top_s, y1=y_end_top_e, fillcolor=c_end_plate, line=line_s)
 
-    # 6. 繪製 EJ 段 (移除 Scatter 端點圓圈)
+    # EJ 段
     def draw_ej_clean(ys, ye, ds, de, tfv, cw, flip=False):
         dsm, dlg = (de, ds) if flip else (ds, de)
         ysm, ylg = (ye, ys) if flip else (ys, ye)
-        # 翼板與腹板 Scatter (mode='lines' 移除標記)
         fig.add_trace(go.Scatter(mode='lines', x=[-dsm/2, -dsm/2+tfv, -dlg/2+tfv, -dlg/2, -dsm/2], y=[ysm, ysm, ylg, ylg, ysm], fill="toself", fillcolor=c_flange_ej, line=line_s, showlegend=False))
         fig.add_trace(go.Scatter(mode='lines', x=[dsm/2-tfv, dsm/2, dlg/2, dlg/2-tfv, dsm/2-tfv], y=[ysm, ysm, ylg, ylg, ysm], fill="toself", fillcolor=c_flange_ej, line=line_s, showlegend=False))
         fig.add_trace(go.Scatter(mode='lines', x=[-dsm/2+tfv, dsm/2-tfv, dlg/2-tfv, -dlg/2+tfv, -dsm/2+tfv], y=[ysm, ysm, ylg, ylg, ysm], fill="toself", fillcolor=cw, line=line_s, showlegend=False))
-
     draw_ej_clean(y_end_top_e, h_SYSC_mm, d_EJ1, d_EJ2, tf_EJ, c_web_ej, flip=False)
     draw_ej_clean(0, y_end_bot_s, d_EJ2, d_EJ1, tf_EJ, c_web_ej, flip=True)
 
-    # 7. 佈局設定 (移除刻度與邊框)
     fig.update_layout(
-        height=800, 
-        template="plotly_dark", 
+        height=800, template="plotly_dark", 
         yaxis=dict(scaleanchor="x", scaleratio=1, showticklabels=False, showgrid=False, zeroline=False),
         xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
-
