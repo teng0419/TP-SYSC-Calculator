@@ -332,6 +332,10 @@ rs_ratio = rs_stiff / rs_star
 # 根據配置逆推最大剪應變需求 gamma_u
 gamma_u = 0.5 * (8.5 * kc / ((hs_val / tw_IC) ** 2) + gamma_y)
 
+# --- 回推最大層間位移角 theta_u ---
+# θu = θy + (γu - γy) * (h_IC / h_SYSC)
+theta_u = theta_y + (gamma_u - gamma_y) * (h_IC_mm / h_SYSC_mm)
+
 # 邊界構架計算 
 L_b_mm = L_b * 1000.0
 Zx_beam = bf_b * tf_b * (d_b - tf_b) + tw_b * (d_b / 2 - tf_b)**2
@@ -408,6 +412,10 @@ with tab2:
     
     st.markdown(f"推算最大剪應變容量 $\gamma_u$: **{to_sig_fig(gamma_u * 100)}** %rad (依據目前加勁板配置)")
     st.markdown(r"↳ $\gamma_u = 0.5\left(\frac{8.5k_c}{(h_s/t_w)^2} + \gamma_y\right)$")
+    
+    # --- 輸出 theta_u ---
+    st.success(f"推算最大層間位移角 $\\theta_u$: **{to_sig_fig(theta_u * 100)}** %rad")
+    st.markdown(r"↳ $\theta_u = \theta_y + (\gamma_u - \gamma_y) \frac{h_{IC}}{h_{SYSC}}$")
 
 with tab3:
     st.subheader("4. 邊界梁與交會區容量設計")
@@ -439,6 +447,7 @@ with tab4:
     - **EJ 連接段型鋼**: `{ej_profile}` ({mat_ej_w})
     - **梁構架鋼材**: `{mat_beam}`
     - **推算最大剪應變 $\gamma_u$**: **{to_sig_fig(gamma_u * 100)}** %rad
+    - **最大層間位移角 $\\theta_u$**: **{to_sig_fig(theta_u * 100)}** %rad
     - **極限設計剪力 $V_{{max}}$**: **{to_sig_fig(Vmax/1000)}** kN
     - **TP-SYSC 彈性側向勁度 $K_{{eff}}$**: **{to_sig_fig(K_eff_kN_mm)}** kN/mm
     - **總用鋼量**: **{to_sig_fig(W_total)}** kg
