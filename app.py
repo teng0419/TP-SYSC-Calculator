@@ -216,8 +216,8 @@ with st.sidebar.expander("TP-SYSC 高度與角度設定", expanded=True):
 with st.sidebar.expander("加勁板配置"):
     n_v = st.number_input("縱向加勁板數量 nL", min_value=0, value=1, step=1)
     n_h = st.number_input("橫向加勁板數量 nT", min_value=0, value=2, step=1)
-    ts = st.number_input("加勁板厚度 ts (mm)", min_value=6.0, value=11.0, step=1.0)
-    bs = st.number_input("加勁板寬度 bs (mm)", min_value=50.0, value=99.0, step=9.0)
+    ts = st.number_input("加勁板厚度 ts (mm)", min_value=10.0, value=11.0, step=1.0)
+    bs = st.number_input("加勁板寬度 bs (mm)", min_value=90.0, value=99.0, step=9.0)
 
 with st.sidebar.expander("邊界構架尺寸"):
     d_c = st.number_input("邊界柱深度 dc (mm)", value=500.0, step=50.0)
@@ -391,30 +391,29 @@ KWR = K_eff_kN_mm / W_total
 tab1, tab2, tab3, tab4 = st.tabs(["⚙️ 韌性設計與容量設計", "🛡️ 加勁板設計", "🏗️ 邊界梁與交會區容量設計", "📐 設計結果與示意圖"])
 
 with tab1:
-    st.subheader("1. 韌性檢核 (Ductility Design)")
-    detail_check("翼板寬厚比 λf", bf_EJ/(2*tf_EJ), bf_ratio_limit, note=r"\lambda_{f,md} = 0.38\sqrt{E / R_y F_y}")
-    detail_check("EJ 腹板寬厚比 λw", (d_EJ2-2*tf_EJ)/tw_EJ, EJ_ratio_limit, note=r"\lambda_{w,md} = 2.61\sqrt{E / R_y F_y}")
+    st.subheader("1. 韌性設計 (Ductility Design)")
+    detail_check("EJ段翼板寬厚比 λf", bf_EJ/(2*tf_EJ), bf_ratio_limit, note=r"\lambda_{f,md} = 0.38\sqrt{E / R_y F_y}")
+    detail_check("EJ段腹板寬厚比 λw", (d_EJ2-2*tf_EJ)/tw_EJ, EJ_ratio_limit, note=r"\lambda_{w,md} = 2.61\sqrt{E / R_y F_y}")
     detail_check("未側撐長度 Lb (放寬)", h_SYSC_mm, Lr_limit, "mm", note=r"L_r = 1.95 r_{ts} \frac{E}{0.7F_y} \sqrt{\frac{Jc}{S_x h_o} + \dots}")
     
     st.divider()
     st.subheader("2. 容量設計 (Capacity Design)")
-    detail_check("EJ 剪力需求 (Vmax vs φVn)", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})")
-    detail_check("EJ 段彎矩需求 (Mu vs φMn)", (Vmax*h_SYSC_mm/2)/1e6, Mn_EJ_design/1e6, "kNm", note=r"M_u = V_{max}h_{TVSC}/2 \le \phi M_{n,EJ}")
+    detail_check("EJ段剪力 (Vmax vs φVn)", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})")
+    detail_check("EJ段彎矩 (Mu vs φMn)", (Vmax*h_SYSC_mm/2)/1e6, Mn_EJ_design/1e6, "kNm", note=r"M_u = V_{max}h_{TVSC}/2 \le \phi M_{n,EJ}")
 
 with tab2:
     st.subheader("3. 加勁板詳細檢核")
-    st.info(f"核心段目標剪應變 γd: **{to_sig_fig(gamma_d * 100)}** %rad")
+    st.info(f"IC段目標剪應變 γd: **{to_sig_fig(gamma_d * 100)}** %rad")
     st.markdown(r"↳ $\gamma_d = \frac{h_{TVSC}}{h_{IC}}(\theta_d - \theta_{e,d})$")
     detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}")
     detail_check("標準化寬厚比 λnw (上限)", lambda_nw, 0.6, note=r"\lambda_{nw} = \frac{h_s}{t_w}\sqrt{\frac{0.6F_y}{k_c E}} \le 0.6")
     detail_check("標準化寬厚比 λnw (下限)", lambda_nw, 0.145, is_lower_bound=True, note=r"\lambda_{nw} \ge 0.145")
-    detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"\gamma_s / \gamma_s^* \ge " + str(to_sig_fig(rs_star_threshold)))
+    detail_check("最適加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"\gamma_s / \gamma_s^* \ge " + str(to_sig_fig(rs_star_threshold)))
     
-    st.markdown(f"推算最大剪應變容量 $\gamma_u$: **{to_sig_fig(gamma_u * 100)}** %rad (依據目前加勁板配置)")
+    st.markdown(f"最大剪應變 $\gamma_u$: **{to_sig_fig(gamma_u * 100)}** %rad (依據目前加勁板配置)")
     st.markdown(r"↳ $\gamma_u = 0.5\left(\frac{8.5k_c}{(h_s/t_w)^2} + \gamma_y\right)$")
     
-    # --- 輸出 theta_u ---
-    st.success(f"推算最大層間位移角 $\\theta_u$: **{to_sig_fig(theta_u * 100)}** %rad")
+    st.markdown(f"最大層間位移角 $\\theta_u$: **{to_sig_fig(theta_u * 100)}** %rad")
     st.markdown(r"↳ $\theta_u = \theta_y + (\gamma_u - \gamma_y) \frac{h_{IC}}{h_{SYSC}}$")
 
 with tab3:
@@ -430,26 +429,28 @@ with tab4:
     with st.expander("🔍 查看詳細計算數據", expanded=True):
         col_l, col_r = st.columns(2)
         with col_l:
-            detail_check("翼板寬厚比 λf", bf_EJ/(2*tf_EJ), bf_ratio_limit, note=r"\lambda_{f,md} = 0.38\sqrt{E / R_y F_y}")
-            detail_check("EJ 腹板寬厚比 λw", (d_EJ2-2*tf_EJ)/tw_EJ, EJ_ratio_limit, note=r"\lambda_{w,md} = 2.61\sqrt{E / R_y F_y}")
-            detail_check("未側撐 Lb", h_SYSC_mm, Lr_limit, "mm", note=r"L_r = 1.95 r_{ts} \frac{E}{0.7F_y} \sqrt{\dots}")
-            detail_check("EJ 剪力需求", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})")
+            detail_check("EJ段翼板寬厚比 λf", bf_EJ/(2*tf_EJ), bf_ratio_limit, note=r"\lambda_{f,md} = 0.38\sqrt{E / R_y F_y}")
+            detail_check("EJ段腹板寬厚比 λw", (d_EJ2-2*tf_EJ)/tw_EJ, EJ_ratio_limit, note=r"\lambda_{w,md} = 2.61\sqrt{E / R_y F_y}")
+            detail_check("未側撐長度 Lb", h_SYSC_mm, Lr_limit, "mm", note=r"L_r = 1.95 r_{ts} \frac{E}{0.7F_y} \sqrt{\dots}")
+            detail_check("EJ段剪力容量設計", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})")
+            detail_check("EJ段彎矩容量設計", (Vmax*h_SYSC_mm/2)/1e6, Mn_EJ_design/1e6, "kN-m", note=r"M_u = V_{max}h_{TVSC}/2 \le \phi M_{n,EJ}")
         with col_r:
-            detail_check("加勁板 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}")
-            detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"\gamma_s / \gamma_s^* \ge " + str(to_sig_fig(rs_star_threshold)))
+            detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}")
+            detail_check("最適加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"\gamma_s / \gamma_s^* \ge " + str(to_sig_fig(rs_star_threshold)))
             detail_check("邊界梁彎矩 DCR", M_b1/Mp_beam, 1.0, note=r"M_{b1} = \dots")
+            detail_check("邊界梁剪力 DCR", V_b/Vn_beam, 1.0, note=r"V_b = \frac{M_{b1} + M_{b2}}{L'}")
             detail_check("交會區剪力 DCR", V_u_PZ/V_n_PZ, 1.0, note=r"V_{u,PZ} = \dots")
 
     st.divider()
     st.subheader("📝 設計總覽 (Summary)")
     st.markdown(f"""
-    - **IC 核心段斷面**: `{ic_profile}` ({mat_ic_w})
-    - **EJ 連接段型鋼**: `{ej_profile}` ({mat_ej_w})
-    - **梁構架鋼材**: `{mat_beam}`
-    - **推算最大剪應變 $\gamma_u$**: **{to_sig_fig(gamma_u * 100)}** %rad
+    - **IC 段斷面**: `{ic_profile}` ({mat_ic_w})
+    - **EJ 段斷面**: `{ej_profile}` ({mat_ej_w})
+    - **邊界梁鋼材**: `{mat_beam}`
+    - **最大剪應變 $\gamma_u$**: **{to_sig_fig(gamma_u * 100)}** %rad
     - **最大層間位移角 $\\theta_u$**: **{to_sig_fig(theta_u * 100)}** %rad
     - **極限設計剪力 $V_{{max}}$**: **{to_sig_fig(Vmax/1000)}** kN
-    - **TP-SYSC 彈性側向勁度 $K_{{eff}}$**: **{to_sig_fig(K_eff_kN_mm)}** kN/mm
+    - **彈性側向勁度 $K_{{eff}}$**: **{to_sig_fig(K_eff_kN_mm)}** kN/mm
     - **總用鋼量**: **{to_sig_fig(W_total)}** kg
     - **勁度重量比 KWR**: **{to_sig_fig(KWR)}**
     """)
