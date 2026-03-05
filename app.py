@@ -229,11 +229,9 @@ with st.sidebar.expander("邊界構架尺寸"):
     Fy_beam = STEEL_DB[mat_beam]["Fy"]
     
 # ==========================================
-# 核心力學引擎 (修正：串聯柔度法 + 精確積分)
+# 核心力學引擎 (串聯柔度法 + 精確積分)
 # ==========================================
-E = E_GPa * 1000.0
-nu = 0.3
-G = E / (2 * (1 + nu))
+E = E_GPa * 1000.0; nu = 0.3; G = E / (2 * (1 + nu))
 theta_d = target_drift / 100.0
 
 d_EJ1 = d_IC
@@ -244,29 +242,28 @@ Ix_IC = (bf_IC * d_IC**3 - (bf_IC - tw_IC) * (d_IC - 2 * tf_IC)**3) / 12.0
 Av_IC = d_IC * tw_IC
 f_IC = h_IC_mm / (G * Av_IC) + h_IC_mm**3 / (12.0 * E * Ix_IC)
 
-# 2. 連接段斷面性質 (EJ1 & EJ2)
+# 2. 連接段兩端性質
 I_EJ1 = (bf_EJ * d_EJ1**3 - (bf_EJ - tw_EJ) * (d_EJ1 - 2 * tf_EJ)**3) / 12.0
 I_EJ2 = (bf_EJ * d_EJ2**3 - (bf_EJ - tw_EJ) * (d_EJ2 - 2 * tf_EJ)**3) / 12.0
 Av_EJ1 = d_EJ1 * tw_EJ
 Av_EJ2 = d_EJ2 * tw_EJ
 
 # 3. EJ 等效性質轉換 (積分精確解)
-# 等效剪力面積
 Av_eq_EJ = (Av_EJ2 - Av_EJ1) / math.log(Av_EJ2 / Av_EJ1) if abs(Av_EJ2 - Av_EJ1) > 1e-5 else Av_EJ1
 
-# 等效慣性矩輔助參數
+# 輔助變數與比例 (修正 L_half 變數名)
 L_half = h_SYSC_mm / 2.0
 b = math.sqrt(I_EJ1)
 a = math.sqrt(I_EJ2)
 alpha_user = 0.5 * h_IC_mm / (h_EJ_mm + ts_End)
+L0_core = 0.5 * h_IC_mm 
 
-# I_eq_EJ 分母兩項計算 (修正變數名為 a, b)
 den_part1 = (alpha_user**2) / (a * b)
 den_part2 = (1.0 + b/a + (2.0*b/(b-a)) * math.log(a/b)) / (b - a)**2 if abs(b-a) > 1e-5 else (1.0 / I_EJ1)
 
 I_eq_EJ = (alpha_user**2 + 1.0/3.0) / (den_part1 + den_part2)
 
-# 4. 連接段總柔度 (f_EJ，包含上下兩段)
+# 4. 連接段總柔度 (f_EJ)
 eta = h_IC_mm / h_SYSC_mm
 f_EJ_shear = ((1.0 - eta) * h_SYSC_mm) / (G * Av_eq_EJ)
 f_EJ_flex = (h_SYSC_mm**3 - h_IC_mm**3) / (12.0 * E * I_eq_EJ)
@@ -565,6 +562,7 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
