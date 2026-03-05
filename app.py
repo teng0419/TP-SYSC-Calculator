@@ -324,7 +324,7 @@ dcr_beam_V = V_b / Vn_beam
 dcr_PZ = V_u_PZ / V_n_PZ
 
 # ==========================================
-# 用鋼量計算 (kg)
+# 用鋼量與 KWR 計算 (kg)
 # ==========================================
 # 鋼材密度 (kg/mm^3)
 rho_steel = 7.85e-6
@@ -334,23 +334,23 @@ A_IC_exact = 2 * bf_IC * tf_IC + (d_IC - 2 * tf_IC) * tw_IC
 W_IC = A_IC_exact * h_IC_mm * rho_steel
 
 # 2. EJ段重量 (上下兩段)
-# 採用梯形腹板加上兩片矩形翼板的體積來算 (等同於對切的原始 H 型鋼長度為 2*h_EJ)
 A_EJ_avg = 2 * bf_EJ * tf_EJ + ((d_EJ1 + d_EJ2) / 2.0 - 2 * tf_EJ) * tw_EJ
 W_EJ = 2 * A_EJ_avg * h_EJ_mm * rho_steel
 
 # 3. 端部板重量 (上下兩塊)
-# 以包覆 IC 斷面略寬為基準計算
 W_ES = 2 * ((d_IC + 20.0) * max(bf_IC, bf_EJ) * ts_End) * rho_steel
 
 # 4. 加勁板重量
-# 橫向：nT 排，每排兩側共 2 塊，長度為 (d_IC - 2*tf_IC)
 W_stiff_T = (2 * nT * (d_IC - 2 * tf_IC) * bs * ts) * rho_steel
-# 縱向：nL 列，每列兩側共 2 塊，長度為 h_IC_mm
 W_stiff_L = (2 * nL * h_IC_mm * bs * ts) * rho_steel
 W_stiff = W_stiff_T + W_stiff_L
 
 # 總重量
 W_total = W_IC + W_EJ + W_ES + W_stiff
+
+# 計算 KWR 勁度重量比
+K_eff_kN_mm = Ke_F / 1000.0
+KWR = K_eff_kN_mm / W_total
 
 
 # ==========================================
@@ -412,7 +412,9 @@ with tab4:
     - **EJ 端深度 $d_{{EJ2}}$**: **{to_sig_fig(d_EJ2)}** mm
     - **推算最大剪應變 $\gamma_u$**: **{to_sig_fig(gamma_u * 100)}** %rad
     - **極限設計剪力 $V_{{max}}$**: **{to_sig_fig(Vmax/1000)}** kN (考慮材料超強與應變硬化)
-    - **推算總用鋼量**: **{to_sig_fig(W_total)}** kg (包含 IC, EJ, 端部板及加勁板)
+    - **TP-SYSC 彈性側向勁度 $K_{{eff}}$**: **{to_sig_fig(K_eff_kN_mm)}** kN/mm
+    - **總用鋼量**: **{to_sig_fig(W_total)}** kg (包含 IC, EJ, 端部板及加勁板)
+    - **勁度重量比 KWR**: **{to_sig_fig(KWR)}**
     """)
 
     # 示意圖 (高對比度專屬配色 - 同構件同色系)
