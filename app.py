@@ -226,7 +226,8 @@ with st.sidebar.expander("邊界構架尺寸"):
     rh_beam = st.selectbox("選取邊界梁 RH 尺寸", list(RH_DATA.keys()), index=len(RH_DATA)-1)
     d_b, bf_b, tw_b, tf_b = RH_DATA[rh_beam]
     t_dp = st.number_input("交會區貼板厚度 t_dp (mm)", value=15.0, step=1.0)
-
+    Fy_beam = STEEL_DB[mat_beam]["Fy"]
+    
 # ==========================================
 # 核心力學引擎 (修正：串聯柔度法 + 精確積分)
 # ==========================================
