@@ -412,7 +412,7 @@ with tab4:
     - **EJ 端深度 $d_{{EJ2}}$**: **{to_sig_fig(d_EJ2)}** mm
     - **推算最大剪應變 $\gamma_u$**: **{to_sig_fig(gamma_u * 100)}** %rad
     - **極限設計剪力 $V_{{max}}$**: **{to_sig_fig(Vmax/1000)}** kN (考慮材料超強與應變硬化)
-    - **TP-SYSC 彈性側向勁度 $K_{{eff}}$**: **{to_sig_fig(K_eff_kN_mm)}** kN/mm
+    - **TP-SYSC 彈性側向勁度 $K_{{eff}}$**: **{K_eff_kN_mm:.6f}** kN/mm
     - **總用鋼量**: **{to_sig_fig(W_total)}** kg (包含 IC, EJ, 端部板及加勁板)
     - **勁度重量比 KWR**: **{to_sig_fig(KWR)}**
     """)
