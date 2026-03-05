@@ -262,31 +262,35 @@ else:
 # -----------------------------------
 # 第三步：計算「等效慣性矩」(I_eq_EJ)
 # -----------------------------------
-L = h_SYSC_mm / 2.0
+L_half = h_SYSC_mm / 2.0
 eta = h_IC_mm / h_SYSC_mm
-L0_core = eta * L
+L0 = eta * L_half  # 核心段半高
 
 # 等效慣性矩 (由變斷面微積分精確解導出)
 a = math.sqrt(I_EJ2)
 b = math.sqrt(I_EJ1)
 dS = a - b
 
+# 等效慣性矩 (微積分精確解)
+a = math.sqrt(I_EJ2); b = math.sqrt(I_EJ1); dS = a - b
 if abs(dS) > 1e-5:
-    # 微積分積分項 I_int (EJ 區段 bending 變形貢獻之核心項)
-    C_val = L - (h_EJ_mm * a) / dS
+    C_val = L_half - (h_EJ_mm * a) / dS
     I_int = (h_EJ_mm**3 / dS**2) + (2.0 * h_EJ_mm**2 * C_val / dS**2) * math.log(a / b) + (h_EJ_mm * C_val**2) / (b * a)
 else:
-    I_int = (L**3 - L0_core**3) / (3.0 * I_EJ1)
+    I_int = (L_half**3 - L0**3) / (3.0 * I_EJ1)
     
 # 根據 Term 2 公式逆推等效慣性矩 I_eq_EJ
-I_eq_EJ = (L**3 - L0_core**3) / (12.0 * I_int)
+I_eq_EJ = (L_half**3 - L0**3) / (12.0 * I_int)
+
+# 彎矩梯度係數 (α)
+alpha_user = 0.5 * h_IC_mm / (h_EJ_mm + ts_End)
 
 # -----------------------------------
 # 第四步：組合計算 EJ 段總柔度 (f_EJ)
 # -----------------------------------
 term1_shear = h_EJ_mm / (G * Av_eq_EJ)
-term2_flex = (L**3 - L0_core**3) / (12.0 * E * I_eq_EJ)
-f_EJ = term1_shear + term2_flex
+term2_flex = (L_half**3 - L0**3) / (12.0 * E * I_eq_EJ)
+f_EJ = term1_shear + term2_flex # 單邊連接段柔度
 
 # 整體側向勁度組合計算 (IC 與 兩段 EJ 串聯)
 K_EE = 1.0 / (2.0 * f_EJ) # 系統中兩段 EJ 串聯對應之勁度
@@ -572,6 +576,7 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
