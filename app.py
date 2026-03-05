@@ -460,7 +460,7 @@ with tab4:
         * 原始剪力面積: $A_{{v,EJ1}} = {Av_EJ1:.2f}$ mm$^2$, $A_{{v,EJ2}} = {Av_EJ2:.2f}$ mm$^2$
         * 等效剪力面積: $A_{{v,eq,EJ}} = {Av_eq_EJ:.2f}$ mm$^2$
         * 微積分參數: $a = \sqrt{{I_{{EJ2}}}} = {a:.2f}$ mm$^2$, $b = \sqrt{{I_{{EJ1}}}} = {b:.2f}$ mm$^2$
-        * 反曲點距離: $L_0 = {L0:.2f}$ mm
+        * 反曲點距離: $L_0 = {L0_core:.2f}$ mm
         * 微積分精確解: $I_{{int}} = {I_int:.6e}$ mm$^{{-1}}$
         * 彎矩梯度係數: $\alpha = {alpha_user:.6f}$
         * 等效慣性矩: $I_{{eq,EJ}} = {I_eq_EJ:.2f}$ mm$^4$
@@ -578,4 +578,5 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
