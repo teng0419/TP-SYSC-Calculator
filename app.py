@@ -432,26 +432,33 @@ with tab4:
             detail_check("邊界梁彎矩 DCR", M_b1/Mp_beam, 1.0, note=r"M_{b1} = \dots")
             detail_check("交會區剪力 DCR", V_u_PZ/V_n_PZ, 1.0, note=r"V_{u,PZ} = \dots")
 
-   # --- 勁度參數驗算面板 (修正處) ---
+    # --- 勁度參數驗算輸出 ---
     with st.expander("🛠️ 勁度參數驗算輸出 (用於手算核對)", expanded=False):
         st.markdown(f"""
-        **1. 基本材料常數**
+        **1. 幾何比例與材料**
+        * $h_{{SYSC}} = {h_SYSC_mm:.2f}$ mm, $h_{{IC}} = {h_IC_mm:.2f}$ mm
+        * 幾何比例: $L = {L_half:.2f}$ mm, $\eta = {eta:.6f}$, $L_0 = {L0_core:.2f}$ mm
         * $E = {E:.2f}$ MPa, $G = {G:.2f}$ MPa
 
-        **2. EJ 段參數 (單邊)**
-        * 幾何比例: $L = {L_half:.2f}$ mm, $\eta = {eta:.6f}$, $L_0 = {L0:.2f}$ mm
-        * 原始慣性矩: $I_{{EJ1}} = {I_EJ1:.2f}$, $I_{{EJ2}} = {I_EJ2:.2f}$
-        * 微積分參數: $a = {a:.2f}$, $b = {b:.2f}$
-        * 微積分精確解: $I_{{int}} = {I_int:.6e}$ mm$^{{-1}}$
-        * 彎矩梯度係數: $\alpha = {alpha_user:.6f}$
-        * 等效慣性矩: $I_{{eq,EJ}} = {I_eq_EJ:.2f}$
-        * 柔度分析: $Term_1 = {term1_shear:.8e}$, $Term_2 = {term2_flex:.8e}$
-        * 單邊 EJ 總柔度: $f_{{EJ}} = {f_EJ:.8e}$ mm/N
-        * 兩段 EJ 總勁度 (串聯): $K_{{EE}} = {K_EE:.2f}$ N/mm
+        **2. 核心段柔度 ($f_{{IC}}$)**
+        * $I_{{IC}} = {Ix_IC:.2e}$ mm$^4$
+        * $f_{{IC}} = {f_IC:.8e}$ mm/N
 
-        **3. 系統整體勁度 (N/mm)**
-        * 核心段勁度 $K_{{e,IC}} = {Ke_IC:.2f}$
-        * 整體彈性勁度 $K_{{eff}} = {Ke_F:.2f}$ (或 **{K_eff_kN_mm:.6f}** kN/mm)
+        **3. EJ 段等效性質 (單邊)**
+        * 原始慣性矩: $I_{{EJ1}} = {I_EJ1:.2e}$, $I_{{EJ2}} = {I_EJ2:.2e}$
+        * 對數等效剪力面積: $A_{{v,eq,EJ}} = {Av_eq_EJ:.2f}$ mm$^2$
+        * 微積分參數: $b = {b:.2f}$, $a = {a:.2f}$
+        * 彎矩梯度比: $\alpha = {alpha_user:.6f}$
+        * 積分等效慣性矩: $I_{{eq,EJ}} = {I_eq_EJ:.2e}$ mm$^4$
+
+        **4. 連接段總柔度 ($f_{{EJ}}$，含上下兩段)**
+        * 剪力柔度項: ${f_EJ_shear:.8e}$ mm/N
+        * 彎曲柔度項: ${f_EJ_flex:.8e}$ mm/N
+        * $f_{{EJ}} = {f_EJ:.8e}$ mm/N
+
+        **5. 系統整體勁度**
+        * 總柔度 $f_{{total}} = {f_total:.8e}$ mm/N
+        * 整體彈性勁度 $K_{{eff}} = 1/f_{{total}} = {Ke_F:.2f}$ N/mm (或 **{K_eff_kN_mm:.6f}** kN/mm)
         """)
 
     st.divider()
@@ -557,6 +564,7 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
