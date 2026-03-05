@@ -434,13 +434,13 @@ with tab4:
     st.divider()
     st.subheader("📝 設計總覽 (Summary)")
     st.markdown(f"""
-    - **IC 核心段斷面**: `{ic_profile}` (SN490B)
-    - **EJ 連接段型鋼**: `{ej_profile}` (SN490B)
-    - **EJ 端深度 $d_{{EJ2}}$**: **{to_sig_fig(d_EJ2)}** mm
+    - **IC 核心段斷面**: `{ic_profile}` ({mat_sn})
+    - **EJ 連接段型鋼**: `{ej_profile}` ({mat_sn})
+    - **梁構架鋼材**: `{mat_beam}` ({mat_beam})
     - **推算最大剪應變 $\gamma_u$**: **{to_sig_fig(gamma_u * 100)}** %rad
-    - **極限設計剪力 $V_{{max}}$**: **{to_sig_fig(Vmax/1000)}** kN (考慮材料超強與應變硬化)
-    - **TP-SYSC 彈性側向勁度 $K_{{eff}}$**: **{K_eff_kN_mm:.6f}** kN/mm
-    - **總用鋼量**: **{to_sig_fig(W_total)}** kg (包含 IC, EJ, 端部板及加勁板)
+    - **極限設計剪力 $V_{{max}}$**: **{to_sig_fig(Vmax/1000)}** kN
+    - **TP-SYSC 彈性側向勁度 $K_{{eff}}$**: **{to_sig_fig(K_eff_kN_mm)}** kN/mm
+    - **總用鋼量**: **{to_sig_fig(W_total)}** kg
     - **勁度重量比 KWR**: **{to_sig_fig(KWR)}**
     """)
 
@@ -534,6 +534,7 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
