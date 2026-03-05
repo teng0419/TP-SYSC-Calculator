@@ -228,7 +228,7 @@ with st.sidebar.expander("邊界構架尺寸"):
     t_dp = st.number_input("交會區貼板厚度 t_dp (mm)", value=15.0, step=1.0)
 
 # ==========================================
-# 核心力學引擎 (更新依據 2025 期刊)
+# 核心力學引擎 (更新依據 2025 期刊與等效柔度理論)
 # ==========================================
 Fy_Stiff = STEEL_DB[mat_stiff]["Fy"]
 Fy_beam = STEEL_DB[mat_beam]["Fy"]
@@ -239,18 +239,58 @@ theta_d = target_drift / 100.0
 d_EJ1 = d_IC
 d_EJ2 = d_EJ1 + 2 * h_EJ_mm * math.tan(theta_sol)
 
-# 勁度計算
+# -----------------------------------
+# 第一步：計算 EJ 段兩端的原始慣性矩與剪力面積
+# -----------------------------------
 Ix_EJ1 = 1/12 * (bf_EJ * d_EJ1**3 - (bf_EJ - tw_EJ) * (d_EJ1 - 2 * tf_EJ)**3)
 Ix_EJ2 = 1/12 * (bf_EJ * d_EJ2**3 - (bf_EJ - tw_EJ) * (d_EJ2 - 2 * tf_EJ)**3)
-Ix_EJ_avg = (Ix_EJ1 + Ix_EJ2) / 2.0
 Ix_IC = 1/12 * (bf_IC * d_IC**3 - (bf_IC - tw_IC) * (d_IC - 2 * tf_IC)**3)
 
-h_EJ_total = 2 * h_EJ_mm
-K_EE = 1.0 / (h_EJ_total / (G * tw_EJ * ((d_EJ1 + d_EJ2)/2.0)) + (h_SYSC_mm**3 - h_IC_mm**3) / (12 * E * Ix_EJ_avg))
+I_EJ1 = Ix_EJ1
+I_EJ2 = Ix_EJ2
+Av_EJ1 = tw_EJ * d_EJ1
+Av_EJ2 = tw_EJ * d_EJ2
+
+# -----------------------------------
+# 第二步：計算「等效剪力面積」(Av_eq_EJ)
+# -----------------------------------
+if abs(Av_EJ2 - Av_EJ1) > 1e-5:
+    Av_eq_EJ = (Av_EJ2 - Av_EJ1) / math.log(Av_EJ2 / Av_EJ1)
+else:
+    Av_eq_EJ = Av_EJ1
+
+# -----------------------------------
+# 第三步：計算「等效慣性矩」(I_eq_EJ)
+# -----------------------------------
+b = math.sqrt(I_EJ1)
+a = math.sqrt(I_EJ2)
+dS = a - b
+L0 = h_IC_mm / 2.0 + ts_End  # 反曲點到 EJ 段較小端之距離
+
+# 計算變斷面樑的彎曲變形微積分精確解 (I_int)
+if abs(dS) > 1e-5:
+    C_val = L0 - (h_EJ_mm * b) / dS
+    I_int = (h_EJ_mm**3 / dS**2) + (2.0 * h_EJ_mm**2 * C_val / dS**2) * math.log(a / b) + (h_EJ_mm * C_val**2) / (b * a)
+else:
+    I_int = h_EJ_mm * (L0**2 + L0 * h_EJ_mm + h_EJ_mm**2 / 3.0) / I_EJ1
+
+# 計算彎矩梯度係數 (α)
+alpha_user = 0.5 * h_IC_mm / (h_EJ_mm + ts_End)
+
+# 導出等效慣性矩
+I_eq_EJ = (h_EJ_mm**3 * (alpha_user**2 + 1.0/3.0)) / I_int
+
+# -----------------------------------
+# 第四步：組合計算 EJ 段總柔度 (f_EJ)
+# -----------------------------------
+f_EJ = h_EJ_mm / (G * Av_eq_EJ) + (h_EJ_mm**3 * (alpha_user**2 + 1.0/3.0)) / (E * I_eq_EJ)
+
+# 整體側向勁度組合計算 (IC 與 兩段 EJ 串聯)
+K_EE = 1.0 / (2.0 * f_EJ)
 Ke_IC = 1.0 / (h_IC_mm / (G * tw_IC * d_IC) + h_IC_mm**3 / (12 * E * Ix_IC))
 Kp_IC = 1.0 / (h_IC_mm / (0.02 * G * tw_IC * d_IC) + h_IC_mm**3 / (12 * E * Ix_IC))
-Ke_F = 1.0 / (1.0 / Ke_IC + 1.0 / K_EE) # 整體初始勁度
-Kp_F = 1.0 / (1.0 / Kp_IC + 1.0 / K_EE) # 整體降伏後勁度
+Ke_F = 1.0 / (1.0 / Ke_IC + 1.0 / K_EE) # 整體初始彈性側向勁度
+Kp_F = 1.0 / (1.0 / Kp_IC + 1.0 / K_EE) # 整體降伏後側向勁度
 
 theta_y = 0.6 * Fy_IC * tw_IC * d_IC / (Ke_F * h_SYSC_mm)
 theta_ed = (Ke_F / K_EE) * theta_y + (Kp_F / K_EE) * (theta_d - theta_y)
