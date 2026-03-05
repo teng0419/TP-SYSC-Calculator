@@ -230,7 +230,9 @@ with st.sidebar.expander("邊界構架尺寸"):
 # ==========================================
 # 核心力學引擎 (修正：串聯柔度法 + 精確積分)
 # ==========================================
-E = E_GPa * 1000.0; nu = 0.3; G = E / (2 * (1 + nu))
+E = E_GPa * 1000.0
+nu = 0.3
+G = E / (2 * (1 + nu))
 theta_d = target_drift / 100.0
 
 d_EJ1 = d_IC
@@ -554,6 +556,7 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
