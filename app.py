@@ -64,7 +64,7 @@ def detail_check(name, actual, limit, unit="", is_lower_bound=False, highlight=F
     
     # 將公式移出 HTML 區塊外，交由 Streamlit 內建的 Markdown 引擎正確解析 LaTeX
     if note:
-        st.caption(f"&emsp; ↳ {note}")
+        st.markdown(f"↳ ${note}$")
 
 # --- 頁面基本設定 ---
 st.set_page_config(page_title="TP-SYSC計算機", layout="wide")
@@ -324,35 +324,68 @@ dcr_beam_V = V_b / Vn_beam
 dcr_PZ = V_u_PZ / V_n_PZ
 
 # ==========================================
+# 用鋼量計算 (kg)
+# ==========================================
+# 鋼材密度 (kg/mm^3)
+rho_steel = 7.85e-6
+
+# 1. IC段重量
+A_IC_exact = 2 * bf_IC * tf_IC + (d_IC - 2 * tf_IC) * tw_IC
+W_IC = A_IC_exact * h_IC_mm * rho_steel
+
+# 2. EJ段重量 (上下兩段)
+# 採用梯形腹板加上兩片矩形翼板的體積來算 (等同於對切的原始 H 型鋼長度為 2*h_EJ)
+A_EJ_avg = 2 * bf_EJ * tf_EJ + ((d_EJ1 + d_EJ2) / 2.0 - 2 * tf_EJ) * tw_EJ
+W_EJ = 2 * A_EJ_avg * h_EJ_mm * rho_steel
+
+# 3. 端部板重量 (上下兩塊)
+# 以包覆 IC 斷面略寬為基準計算
+W_ES = 2 * ((d_IC + 20.0) * max(bf_IC, bf_EJ) * ts_End) * rho_steel
+
+# 4. 加勁板重量
+# 橫向：nT 排，每排兩側共 2 塊，長度為 (d_IC - 2*tf_IC)
+W_stiff_T = (2 * nT * (d_IC - 2 * tf_IC) * bs * ts) * rho_steel
+# 縱向：nL 列，每列兩側共 2 塊，長度為 h_IC_mm
+W_stiff_L = (2 * nL * h_IC_mm * bs * ts) * rho_steel
+W_stiff = W_stiff_T + W_stiff_L
+
+# 總重量
+W_total = W_IC + W_EJ + W_ES + W_stiff
+
+
+# ==========================================
 # 輸出分頁
 # ==========================================
 tab1, tab2, tab3, tab4 = st.tabs(["⚙️ 韌性設計與容量設計", "🛡️ 加勁板設計", "🏗️ 邊界梁與交會區容量設計", "📐 設計結果與示意圖"])
 
 with tab1:
     st.subheader("1. 韌性檢核 (Ductility Design)")
-    detail_check("翼板寬厚比 λf", bf_EJ/(2*tf_EJ), bf_ratio_limit, note=r"$\lambda_{f,md} = 0.38\sqrt{E / R_y F_y}$")
-    detail_check("EJ 腹板寬厚比 λw", (d_EJ2-2*tf_EJ)/tw_EJ, EJ_ratio_limit, note=r"$\lambda_{w,md} = 2.61\sqrt{E / R_y F_y}$")
-    detail_check("未側撐長度 Lb (放寬)", h_SYSC_mm, Lr_limit, "mm", note=r"$L_r = 1.95 r_{ts} \frac{E}{0.7F_y} \sqrt{\dots}$")
+    detail_check("翼板寬厚比 λf", bf_EJ/(2*tf_EJ), bf_ratio_limit, note=r"\lambda_{f,md} = 0.38\sqrt{E / R_y F_y}")
+    detail_check("EJ 腹板寬厚比 λw", (d_EJ2-2*tf_EJ)/tw_EJ, EJ_ratio_limit, note=r"\lambda_{w,md} = 2.61\sqrt{E / R_y F_y}")
+    detail_check("未側撐長度 Lb (放寬)", h_SYSC_mm, Lr_limit, "mm", note=r"L_r = 1.95 r_{ts} \frac{E}{0.7F_y} \sqrt{\frac{Jc}{S_x h_o} + \dots}")
     
     st.divider()
     st.subheader("2. 容量設計 (Capacity Design)")
-    detail_check("EJ 剪力需求 (Vmax vs φVn)", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"$\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})$")
-    detail_check("EJ 段彎矩需求 (Mu vs φMn)", (Vmax*h_SYSC_mm/2)/1e6, Mn_EJ_design/1e6, "kNm", note=r"$M_u = V_{max}h_{TVSC}/2 \le \phi M_{n,EJ}$")
+    detail_check("EJ 剪力需求 (Vmax vs φVn)", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})")
+    detail_check("EJ 段彎矩需求 (Mu vs φMn)", (Vmax*h_SYSC_mm/2)/1e6, Mn_EJ_design/1e6, "kNm", note=r"M_u = V_{max}h_{TVSC}/2 \le \phi M_{n,EJ}")
 
 with tab2:
     st.subheader("3. 加勁板詳細檢核")
-    st.info(f"核心段目標剪應變 γd: **{to_sig_fig(gamma_d * 100)}** %rad &emsp;&emsp; " + r"$(\gamma_d = \frac{h_{TVSC}}{h_{IC}}(\theta_d - \theta_{e,d}))$")
-    detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"$h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}$")
-    detail_check("標準化寬厚比 λnw (上限)", lambda_nw, 0.6, note=r"$\lambda_{nw} = \frac{h_s}{t_w}\sqrt{\frac{0.6F_y}{k_c E}} \le 0.6$")
-    detail_check("標準化寬厚比 λnw (下限)", lambda_nw, 0.145, is_lower_bound=True, note=r"$\lambda_{nw} \ge 0.145$")
-    detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"$\gamma_s / \gamma_s^* \ge $" + str(to_sig_fig(rs_star_threshold)))
-    st.markdown(f"推算最大剪應變容量 $\gamma_u$: **{to_sig_fig(gamma_u * 100)}** %rad &emsp;&emsp; " + r"$(\gamma_u = 0.5(\frac{8.5k_c}{(h_s/t_w)^2} + \gamma_y))$")
+    st.info(f"核心段目標剪應變 γd: **{to_sig_fig(gamma_d * 100)}** %rad")
+    st.markdown(r"↳ $\gamma_d = \frac{h_{TVSC}}{h_{IC}}(\theta_d - \theta_{e,d})$")
+    detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}")
+    detail_check("標準化寬厚比 λnw (上限)", lambda_nw, 0.6, note=r"\lambda_{nw} = \frac{h_s}{t_w}\sqrt{\frac{0.6F_y}{k_c E}} \le 0.6")
+    detail_check("標準化寬厚比 λnw (下限)", lambda_nw, 0.145, is_lower_bound=True, note=r"\lambda_{nw} \ge 0.145")
+    detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"\gamma_s / \gamma_s^* \ge " + str(to_sig_fig(rs_star_threshold)))
+    
+    st.markdown(f"推算最大剪應變容量 $\gamma_u$: **{to_sig_fig(gamma_u * 100)}** %rad (依據目前加勁板配置)")
+    st.markdown(r"↳ $\gamma_u = 0.5\left(\frac{8.5k_c}{(h_s/t_w)^2} + \gamma_y\right)$")
 
 with tab3:
     st.subheader("4. 邊界梁與交會區容量設計")
-    detail_check("邊界梁彎矩 DCR (Mb1/Mp)", M_b1/Mp_beam, 1.0, note=r"$M_{b1} = \frac{V_{ult}(h_{TVSC}/2 + d_b/2) - M_{b2}(d_{EJ2}/2L')}{1 + d_{EJ2}/2L'}$")
-    detail_check("邊界梁剪力 DCR (Vb/Vn)", V_b/Vn_beam, 1.0, note=r"$V_b = \frac{M_{b1} + M_{b2}}{L'}$")
-    detail_check("交會區剪力 DCR (Vu/Vn)", V_u_PZ/V_n_PZ, 1.0, note=r"$V_{u,PZ} = \frac{V_{ult} h_{TVSC}}{d_{EJ2} - t_f} - V_b$")
+    detail_check("邊界梁彎矩 DCR (Mb1/Mp)", M_b1/Mp_beam, 1.0, note=r"M_{b1} = \frac{V_{ult}(h_{TVSC}/2 + d_b/2) - M_{b2}(d_{EJ2}/2L')}{1 + d_{EJ2}/2L'}")
+    detail_check("邊界梁剪力 DCR (Vb/Vn)", V_b/Vn_beam, 1.0, note=r"V_b = \frac{M_{b1} + M_{b2}}{L'}")
+    detail_check("交會區剪力 DCR (Vu/Vn)", V_u_PZ/V_n_PZ, 1.0, note=r"V_{u,PZ} = \frac{V_{ult} h_{TVSC}}{d_{EJ2} - t_f} - V_b")
 
 with tab4:
     # --- 整合彙整 ---
@@ -361,24 +394,25 @@ with tab4:
     with st.expander("🔍 查看詳細計算數據", expanded=True):
         col_l, col_r = st.columns(2)
         with col_l:
-            detail_check("翼板寬厚比 λf", bf_EJ/(2*tf_EJ), bf_ratio_limit, note=r"$\lambda_{f,md} = 0.38\sqrt{E / R_y F_y}$")
-            detail_check("EJ 腹板寬厚比 λw", (d_EJ2-2*tf_EJ)/tw_EJ, EJ_ratio_limit, note=r"$\lambda_{w,md} = 2.61\sqrt{E / R_y F_y}$")
-            detail_check("未側撐 Lb", h_SYSC_mm, Lr_limit, "mm", note=r"$L_r = 1.95 r_{ts} \frac{E}{0.7F_y} \sqrt{\dots}$")
-            detail_check("EJ 剪力需求", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"$\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})$")
+            detail_check("翼板寬厚比 λf", bf_EJ/(2*tf_EJ), bf_ratio_limit, note=r"\lambda_{f,md} = 0.38\sqrt{E / R_y F_y}")
+            detail_check("EJ 腹板寬厚比 λw", (d_EJ2-2*tf_EJ)/tw_EJ, EJ_ratio_limit, note=r"\lambda_{w,md} = 2.61\sqrt{E / R_y F_y}")
+            detail_check("未側撐 Lb", h_SYSC_mm, Lr_limit, "mm", note=r"L_r = 1.95 r_{ts} \frac{E}{0.7F_y} \sqrt{\dots}")
+            detail_check("EJ 剪力需求", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})")
         with col_r:
-            detail_check("加勁板 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"$h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}$")
-            detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"$\gamma_s / \gamma_s^* \ge $" + str(to_sig_fig(rs_star_threshold)))
-            detail_check("邊界梁彎矩 DCR", M_b1/Mp_beam, 1.0, note=r"$M_{b1} = \frac{V_{ult}(h_{TVSC}/2 + d_b/2) - M_{b2}(d_{EJ2}/2L')}{1 + d_{EJ2}/2L'}$")
-            detail_check("交會區剪力 DCR", V_u_PZ/V_n_PZ, 1.0, note=r"$V_{u,PZ} = \frac{V_{ult} h_{TVSC}}{d_{EJ2} - t_f} - V_b$")
+            detail_check("加勁板 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}")
+            detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"\gamma_s / \gamma_s^* \ge " + str(to_sig_fig(rs_star_threshold)))
+            detail_check("邊界梁彎矩 DCR", M_b1/Mp_beam, 1.0, note=r"M_{b1} = \dots")
+            detail_check("交會區剪力 DCR", V_u_PZ/V_n_PZ, 1.0, note=r"V_{u,PZ} = \dots")
 
     st.divider()
     st.subheader("📝 設計總覽 (Summary)")
     st.markdown(f"""
-    - **IC 核心段斷面**: `{ic_profile}` (SN400B)
+    - **IC 核心段斷面**: `{ic_profile}` (SN490B)
     - **EJ 連接段型鋼**: `{ej_profile}` (SN490B)
     - **EJ 端深度 $d_{{EJ2}}$**: **{to_sig_fig(d_EJ2)}** mm
     - **推算最大剪應變 $\gamma_u$**: **{to_sig_fig(gamma_u * 100)}** %rad
     - **極限設計剪力 $V_{{max}}$**: **{to_sig_fig(Vmax/1000)}** kN (考慮材料超強與應變硬化)
+    - **推算總用鋼量**: **{to_sig_fig(W_total)}** kg (包含 IC, EJ, 端部板及加勁板)
     """)
 
     # 示意圖 (高對比度專屬配色)
@@ -391,6 +425,7 @@ with tab4:
     c_end_plate = "#BF5AF2"  # 亮紫色 (端部板)
     c_beam_web = "#636366"   # 灰色 (梁腹板)
     c_beam_flange = "#48484A"# 深灰色 (梁翼板)
+    c_pz_doubler = "#8E8E93" # 亮灰色 (交會區貼板)
     c_col = "#2C2C2E"        # 背景柱深灰
     line_s = dict(color="white", width=0.0)
 
@@ -416,6 +451,16 @@ with tab4:
     draw_beam(0, d_b, tf_b, is_top=False)
     draw_beam(h_SYSC_mm, d_b, tf_b, is_top=True)
 
+    # 繪製 Panel Zone 交會區加勁板
+    for x_p in [-d_EJ2/2, d_EJ2/2]:
+        # EJ 延伸入梁的翼板
+        fig.add_shape(type="rect", x0=x_p-tf_EJ/2, x1=x_p+tf_EJ/2, y0=-d_b+tf_b, y1=-tf_b, fillcolor=c_flange_ej, line=dict(width=0))
+        fig.add_shape(type="rect", x0=x_p-tf_EJ/2, x1=x_p+tf_EJ/2, y0=h_SYSC_mm+tf_b, y1=h_SYSC_mm+d_b-tf_b, fillcolor=c_flange_ej, line=dict(width=0))
+    
+    # 兩側的交會區貼板 (Doubler Plate)
+    fig.add_shape(type="rect", x0=-d_EJ2/2+tf_EJ/2, x1=d_EJ2/2-tf_EJ/2, y0=-d_b+tf_b, y1=-tf_b, fillcolor=c_pz_doubler, line=dict(width=0))
+    fig.add_shape(type="rect", x0=-d_EJ2/2+tf_EJ/2, x1=d_EJ2/2-tf_EJ/2, y0=h_SYSC_mm+tf_b, y1=h_SYSC_mm+d_b-tf_b, fillcolor=c_pz_doubler, line=dict(width=0))
+
     # 繪製 EJ 段
     def draw_ej(ys, ye, ds, de, tfv, cw, flip=False):
         dsm, dlg = (de, ds) if flip else (ds, de)
@@ -423,6 +468,10 @@ with tab4:
         fig.add_trace(go.Scatter(mode='lines', x=[-dsm/2, -dsm/2+tfv, -dlg/2+tfv, -dlg/2, -dsm/2], y=[ysm, ysm, ylg, ylg, ysm], fill="toself", fillcolor=c_flange_ej, line=line_s, showlegend=False))
         fig.add_trace(go.Scatter(mode='lines', x=[dsm/2-tfv, dsm/2, dlg/2, dlg/2-tfv, dsm/2-tfv], y=[ysm, ysm, ylg, ylg, ysm], fill="toself", fillcolor=c_flange_ej, line=line_s, showlegend=False))
         fig.add_trace(go.Scatter(mode='lines', x=[-dsm/2+tfv, dsm/2-tfv, dlg/2-tfv, -dlg/2+tfv, -dsm/2+tfv], y=[ysm, ysm, ylg, ylg, ysm], fill="toself", fillcolor=cw, line=line_s, showlegend=False))
+        
+        # 新增中心切割虛線，象徵由 H 型鋼切割組裝而成
+        fig.add_shape(type="line", x0=0, x1=0, y0=ys, y1=ye, line=dict(color="black", width=2.5, dash="dash"))
+
     draw_ej(h_SYSC_mm-h_EJ_mm, h_SYSC_mm, d_EJ1, d_EJ2, tf_EJ, c_web_ej, flip=False)
     draw_ej(0, h_EJ_mm, d_EJ2, d_EJ1, tf_EJ, c_web_ej, flip=True)
 
@@ -436,7 +485,7 @@ with tab4:
     fig.add_shape(type="rect", x0=d_IC/2-tf_IC, x1=d_IC/2, y0=y_ic_b, y1=y_ic_t, fillcolor=c_flange_ic, line=line_s)
     fig.add_shape(type="rect", x0=-d_IC/2+tf_IC, x1=d_IC/2-tf_IC, y0=y_ic_b, y1=y_ic_t, fillcolor=c_web_ic, line=line_s)
     
-    # 繪製 IC 段面外加勁板 (增加線寬至 3.0，使用高對比綠色)
+    # 繪製 IC 段面外加勁板
     hw_ic_net = d_IC - 2 * tf_IC
     if nT > 0:
         for i in range(1, int(nT) + 1):
