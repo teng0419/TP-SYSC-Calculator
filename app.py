@@ -184,7 +184,7 @@ with st.sidebar.expander("材料性質", expanded=True):
 
 with st.sidebar.expander("TP-SYSC 高度與角度設定", expanded=True):
     h_SYSC_mm = st.number_input("間柱總高度 h_SYSC (mm)", value=2600.0, step=10.0)
-    h_IC_mm = st.number_input("核心段高度 h_IC (mm)", value=750.0, step=1.0)
+    h_IC_mm = st.number_input("核心段高度 h_IC (mm)", value=750.0, step=10.0)
     
     ic_profile = st.selectbox("選取 IC 段核心斷面", list(RH_DATA.keys()), index=list(RH_DATA.keys()).index("488 X 300 X 11 X 18"))
     d_IC, bf_IC, tw_IC, tf_IC = RH_DATA[ic_profile]
@@ -196,7 +196,7 @@ with st.sidebar.expander("TP-SYSC 高度與角度設定", expanded=True):
     h_SYSC = h_SYSC_mm / 1000.0
     st.info(f"📐 計算所得單邊連接段高度 $h_{{EJ}}$: **{to_sig_fig(h_EJ_mm)}** mm")
 
-    theta_deg = st.number_input("輸入錐形角度 θ (deg)", value=8.5, min_value=0.0, max_value=90.0, step=0.1)
+    theta_deg = st.number_input("輸入錐形角度 θ (deg)", value=8.5, min_value=0.0, max_value=90.0, step=0.5)
     theta_sol = math.radians(theta_deg)
 
     # 根據輸入的 theta 篩選 EJ (優化篩選邏輯，給予 2mm 標稱容差確保標準型鋼不被濾掉)
@@ -217,7 +217,7 @@ with st.sidebar.expander("加勁板配置"):
     n_v = st.number_input("縱向加勁板數量 nL", min_value=0, value=1, step=1)
     n_h = st.number_input("橫向加勁板數量 nT", min_value=0, value=2, step=1)
     ts = st.number_input("加勁板厚度 ts (mm)", min_value=6.0, value=11.0, step=1.0)
-    bs = st.number_input("加勁板寬度 bs (mm)", min_value=50.0, value=99.0, step=1.0)
+    bs = st.number_input("加勁板寬度 bs (mm)", min_value=50.0, value=99.0, step=9.0)
 
 with st.sidebar.expander("邊界構架尺寸"):
     d_c = st.number_input("邊界柱深度 dc (mm)", value=500.0, step=50.0)
@@ -535,4 +535,5 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
