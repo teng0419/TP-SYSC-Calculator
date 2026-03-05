@@ -236,6 +236,10 @@ alpha_s_log = np.log10(alpha_s) if alpha_s > 0 else 0
 rs_star = 152.7 * alpha_s_log**2 + 21.14 * alpha_s_log + 26.34
 rs_ratio = rs_stiff / rs_star
 
+# 根據配置逆推最大剪應變需求 gamma_u
+gamma_u = 0.5 * (8.5 * kc / ((hs_val / tw_IC) ** 2) + gamma_y)
+
+
 # 邊界構架計算 (修補缺失的 Mp_beam 與 Vn_beam 變數)
 L_b_mm = L_b * 1000.0
 Zx_beam = bf_b * tf_b * (d_b - tf_b) + tw_b * (d_b / 2 - tf_b)**2
@@ -283,7 +287,7 @@ def detail_check(name, actual, limit, unit="", is_lower_bound=False, highlight=F
 tab1, tab2, tab3, tab4 = st.tabs(["⚙️ 韌性設計與容量設計", "🛡️ 加勁板設計", "🏗️ 邊界梁與交會區容量設計", "📐 設計結果與示意圖"])
 
 with tab1:
-    st.subheader("1. 韌性檢核 (Ductility)")
+    st.subheader("1. 韌性檢核 (Ductility Design)")
     detail_check("翼板寬厚比 λf", bf_EJ/(2*tf_EJ), bf_ratio_limit, note="論文 Eq. 14")
     detail_check("EJ 腹板寬厚比 λw", (d_EJ2-2*tf_EJ)/tw_EJ, EJ_ratio_limit, note="論文 Eq. 15")
     detail_check("未側撐長度 Lb (放寬)", h_SYSC_mm, Lr_limit, "mm", note="論文建議放寬至 Lr (Eq. 18)")
@@ -301,6 +305,7 @@ with tab2:
     detail_check("標準化寬厚比 λnw (上限)", lambda_nw, 0.6)
     detail_check("標準化寬厚比 λnw (下限)", lambda_nw, 0.145, is_lower_bound=True)
     detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=f"γd={gamma_d:.2f}, 門檻取 {rs_star_threshold}")
+    st.markdown(f"推算最大剪應變容量 $\gamma_u$: **{gamma_u:.4f}** rad (依據目前加勁板配置)")
 
 with tab3:
     st.subheader("4. 邊界梁與交會區容量設計")
@@ -331,6 +336,7 @@ with tab4:
     - **IC 核心段斷面**: `{ic_profile}` (SN400B)
     - **EJ 連接段型鋼**: `{ej_profile}` (SN490B)
     - **EJ 端深度 $d_{{EJ2}}$**: **{d_EJ2:.1f}** mm
+    - **推算最大剪應變 $\gamma_u$**: **{gamma_u:.4f}** rad
     - **極限設計剪力 $V_{{max}}$**: **{Vmax/1000:.0f}** kN (考慮材料超強與應變硬化)
     """)
 
