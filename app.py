@@ -280,7 +280,7 @@ def detail_check(name, actual, limit, unit="", is_lower_bound=False, highlight=F
 # ==========================================
 # 輸出分頁
 # ==========================================
-tab1, tab2, tab3, tab4 = st.tabs(["⚙️ 韌性與容量檢核", "🛡️ 加勁板設計", "🏗️ 邊界梁與交會區", "📐 設計結果與示意圖"])
+tab1, tab2, tab3, tab4 = st.tabs(["⚙️ 韌性設計與容量設計", "🛡️ 加勁板設計", "🏗️ 邊界梁與交會區容量設計", "📐 設計結果與示意圖"])
 
 with tab1:
     st.subheader("1. 韌性檢核 (Ductility)")
@@ -297,13 +297,13 @@ with tab1:
 with tab2:
     st.subheader("3. 加勁板詳細檢核")
     st.info(f"核心段目標剪應變 γd: **{gamma_d:.4f}** rad (論文 Eq. 31)")
-    detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, highlight=True, note="隨 θd 動態變化 (Eq. 32)")
+    detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, note="隨 θd 動態變化 (Eq. 32)")
     detail_check("標準化寬厚比 λnw (上限)", lambda_nw, 0.6)
     detail_check("標準化寬厚比 λnw (下限)", lambda_nw, 0.145, is_lower_bound=True)
     detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=f"γd={gamma_d:.2f}, 門檻取 {rs_star_threshold}")
 
 with tab3:
-    st.subheader("4. 邊界構架檢核")
+    st.subheader("4. 邊界梁與交會區容量設計")
     detail_check("邊界梁彎矩 DCR (Mb1/Mp)", M_b1/Mp_beam, 1.0)
     detail_check("邊界梁剪力 DCR (Vb/Vn)", V_b/Vn_beam, 1.0)
     detail_check("交會區剪力 DCR (Vu/Vn)", V_u_PZ/V_n_PZ, 1.0)
@@ -320,7 +320,7 @@ with tab4:
             detail_check("未側撐 Lb", h_SYSC_mm, Lr_limit, "mm")
             detail_check("端部板剪力容量", Vmax/1000, Vn_End_design/1000, "kN")
         with col_r:
-            detail_check("加勁板 hs/tw", hs_val/tw_IC, hs_tw_limit, highlight=True)
+            detail_check("加勁板 hs/tw", hs_val/tw_IC, hs_tw_limit)
             detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True)
             detail_check("邊界梁彎矩 DCR", M_b1/Mp_beam, 1.0)
             detail_check("交會區剪力 DCR", V_u_PZ/V_n_PZ, 1.0)
