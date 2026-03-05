@@ -291,7 +291,7 @@ with tab1:
 with tab2:
     st.subheader("2. 加勁板詳細檢核")
     st.info("註：黃色標示項目會隨目標側移角 θd 動態改變限制值。")
-    detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, highlight=True)
+    detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit)
     detail_check("標準化寬厚比 λnw", lambda_nw, 0.6)
     detail_check("標準化寬厚比 λnw (下限)", lambda_nw, 0.145, is_lower_bound=True)
     detail_check("剛度比 rs/rs*", rs_ratio, 1.0, is_lower_bound=True)
@@ -320,7 +320,7 @@ with tab4:
     with st.expander("🛡️ 加勁板設計詳細數據 (展開查看)", expanded=True):
         c_s1, c_s2 = st.columns(2)
         with c_s1:
-            detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, highlight=True)
+            detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit)
             detail_check("標準寬度比 λnw", lambda_nw, 0.6)
         with c_s2:
             detail_check("板厚度 ts (mm)", ts, max(0.75*tw_IC, 10.0), is_lower_bound=True)
@@ -394,3 +394,4 @@ with tab4:
 
     fig.update_layout(height=700, template="plotly_dark", yaxis=dict(scaleanchor="x", scaleratio=1), margin=dict(l=10,r=10,t=10,b=10))
     st.plotly_chart(fig, use_container_width=True)
+
