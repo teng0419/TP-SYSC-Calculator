@@ -50,18 +50,21 @@ def detail_check(name, actual, limit, unit="", is_lower_bound=False, highlight=F
     val_disp = to_sig_fig(actual) if isinstance(actual, (float, int, np.floating, np.integer)) else str(actual)
     limit_disp = to_sig_fig(limit) if isinstance(limit, (float, int, np.floating, np.integer)) else str(limit)
 
+    # 檢核框主體 (HTML)
     st.markdown(f"""
-    <div class="check-box" style="border-left: 5px solid {color}; {bg_style}">
+    <div class="check-box" style="border-left: 5px solid {color}; {bg_style} margin-bottom: 2px;">
         <div style="display: flex; justify-content: space-between;">
             <strong style="font-size: 1.1em;">{name}</strong>
             <span style="color:{color}; font-weight:bold;">{status}</span>
         </div>
         實際值: <code>{val_disp} {unit}</code> {symbol} 
         限制值: <code>{limit_disp} {unit}</code>
-        {f'<br><small style="color:#AAA;">{note}</small>' if note else ''}
     </div>
     """, unsafe_allow_html=True)
-
+    
+    # 將公式移出 HTML 區塊外，交由 Streamlit 內建的 Markdown 引擎正確解析 LaTeX
+    if note:
+        st.caption(f"&emsp; ↳ {note}")
 
 # --- 頁面基本設定 ---
 st.set_page_config(page_title="TP-SYSC計算機", layout="wide")
@@ -90,7 +93,6 @@ st.markdown("""
     .check-box {
         padding: 12px;
         border-radius: 8px;
-        margin-bottom: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     code {
@@ -187,7 +189,7 @@ with st.sidebar.expander("TP-SYSC 高度與角度設定", expanded=True):
     ic_profile = st.selectbox("選取 IC 段核心斷面", list(RH_DATA.keys()), index=list(RH_DATA.keys()).index("488 X 300 X 11 X 18"))
     d_IC, bf_IC, tw_IC, tf_IC = RH_DATA[ic_profile]
 
-    ts_End = st.number_input("端部板厚度 ts_End (mm)", value=float(tf_IC), step=1.0, help="需檢核剪力強度")
+    ts_End = st.number_input("端部板厚度 ts_End (mm)", value=float(tf_IC), step=1.0)
     
     # 改為由 h_SYSC 反推計算 h_EJ
     h_EJ_mm = (h_SYSC_mm - h_IC_mm - 2 * ts_End) / 2.0
@@ -279,11 +281,7 @@ Mn_IC_design = 0.9 * (Ry_IC * Zf_IC * Fy_IC)
 Zx_EJ2 = bf_EJ * tf_EJ * (d_EJ2 - tf_EJ) + tw_EJ * (d_EJ2 / 2 - tf_EJ)**2
 Mn_EJ_design = 0.9 * (Zx_EJ2 * Fy_EJ)
 
-# 4. 端部板剪力容量檢核
-ds_ES = d_IC - 2 * tf_IC
-Vn_End_design = 0.9 * (0.6 * Fy_Stiff * ts_End * ds_ES)
-
-# 5. 加勁板詳細參數
+# 4. 加勁板詳細參數
 gamma_d = (h_SYSC_mm / h_IC_mm) * (theta_d - theta_ed)
 gamma_y = (0.6 * Fy_IC) / G
 nL, nT = n_v, n_h
@@ -339,7 +337,6 @@ with tab1:
     st.divider()
     st.subheader("2. 容量設計 (Capacity Design)")
     detail_check("EJ 剪力需求 (Vmax vs φVn)", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"$\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})$")
-    detail_check("端部板剪力 (Vmax vs φVn_ES)", Vmax/1000, Vn_End_design/1000, "kN", note=r"$\phi V_{n,ES} = 0.9(0.6 F_{y,stiff} t_{s,ES} d_{s,ES})$")
     detail_check("EJ 段彎矩需求 (Mu vs φMn)", (Vmax*h_SYSC_mm/2)/1e6, Mn_EJ_design/1e6, "kNm", note=r"$M_u = V_{max}h_{TVSC}/2 \le \phi M_{n,EJ}$")
 
 with tab2:
@@ -367,7 +364,7 @@ with tab4:
             detail_check("翼板寬厚比 λf", bf_EJ/(2*tf_EJ), bf_ratio_limit, note=r"$\lambda_{f,md} = 0.38\sqrt{E / R_y F_y}$")
             detail_check("EJ 腹板寬厚比 λw", (d_EJ2-2*tf_EJ)/tw_EJ, EJ_ratio_limit, note=r"$\lambda_{w,md} = 2.61\sqrt{E / R_y F_y}$")
             detail_check("未側撐 Lb", h_SYSC_mm, Lr_limit, "mm", note=r"$L_r = 1.95 r_{ts} \frac{E}{0.7F_y} \sqrt{\dots}$")
-            detail_check("端部板剪力容量", Vmax/1000, Vn_End_design/1000, "kN", note=r"$\phi V_{n,ES} = 0.9(0.6 F_{y,stiff} t_{s,ES} d_{s,ES})$")
+            detail_check("EJ 剪力需求", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"$\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})$")
         with col_r:
             detail_check("加勁板 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"$h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}$")
             detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"$\gamma_s / \gamma_s^* \ge $" + str(to_sig_fig(rs_star_threshold)))
