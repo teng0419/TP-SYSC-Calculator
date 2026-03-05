@@ -255,6 +255,7 @@ Av_EJ2 = d_EJ2 * tw_EJ
 Av_eq_EJ = (Av_EJ2 - Av_EJ1) / math.log(Av_EJ2 / Av_EJ1) if abs(Av_EJ2 - Av_EJ1) > 1e-5 else Av_EJ1
 
 # 等效慣性矩輔助參數
+L_half = h_SYSC_mm / 2.0
 b = math.sqrt(I_EJ1)
 a = math.sqrt(I_EJ2)
 alpha_user = 0.5 * h_IC_mm / (h_EJ_mm + ts_End)
@@ -564,6 +565,7 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
