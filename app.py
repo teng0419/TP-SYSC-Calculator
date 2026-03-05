@@ -11,16 +11,22 @@ st.set_page_config(page_title="TP-SYSC計算機", layout="wide")
 # ==========================================
 st.markdown("""
 <style>
+    /* 只針對主要的文字容器設定字型，不要用 '*' */
     html, body, [data-testid="stSidebar"], .main {
         font-family: 'Calibri', sans-serif;
     }
+
+    /* 針對標籤、段落等文字調整大小 */
     p, label, li, span, .stMarkdown {
         font-size: 18px !important;
     }
+
+    /* 確保標題大小一致 */
     h1, h2, h3 {
         font-size: 20px !important;
         font-family: 'Calibri', sans-serif !important;
     }
+    
     .check-box {
         padding: 12px;
         border-radius: 8px;
@@ -165,14 +171,13 @@ d_EJ1 = d_IC
 d_EJ2 = d_EJ1 + 2 * h_EJ_mm * math.tan(theta_sol)
 
 # 勁度計算
-d_EJ_avg = (d_EJ1 + d_EJ2) / 2.0
 Ix_EJ1 = 1/12 * (bf_EJ * d_EJ1**3 - (bf_EJ - tw_EJ) * (d_EJ1 - 2 * tf_EJ)**3)
 Ix_EJ2 = 1/12 * (bf_EJ * d_EJ2**3 - (bf_EJ - tw_EJ) * (d_EJ2 - 2 * tf_EJ)**3)
 Ix_EJ_avg = (Ix_EJ1 + Ix_EJ2) / 2.0
 Ix_IC = 1/12 * (bf_IC * d_IC**3 - (bf_IC - tw_IC) * (d_IC - 2 * tf_IC)**3)
 
 h_EJ_total = 2 * h_EJ_mm
-K_EE = 1.0 / (h_EJ_total / (G * tw_EJ * d_EJ_avg) + (h_SYSC_mm**3 - h_IC_mm**3) / (12 * E * Ix_EJ_avg))
+K_EE = 1.0 / (h_EJ_total / (G * tw_EJ * ((d_EJ1 + d_EJ2)/2.0)) + (h_SYSC_mm**3 - h_IC_mm**3) / (12 * E * Ix_EJ_avg))
 Ke_IC = 1.0 / (h_IC_mm / (G * tw_IC * d_IC) + h_IC_mm**3 / (12 * E * Ix_IC))
 Kp_IC = 1.0 / (h_IC_mm / (0.02 * G * tw_IC * d_IC) + h_IC_mm**3 / (12 * E * Ix_IC))
 Ke_F = 1.0 / (1.0 / Ke_IC + 1.0 / K_EE) # 整體初始勁度
@@ -251,14 +256,18 @@ def detail_check(name, actual, limit, unit="", is_lower_bound=False, highlight=F
     status = "OK!" if is_ok else "NG!"
     bg_style = "background-color: rgba(255, 255, 0, 0.15);" if highlight else "background-color: rgba(255,255,255,0.05);"
     
+    # 修正 f-string 格式化錯誤
+    val_disp = f"{actual:.3f}" if isinstance(actual, (float, np.floating)) else str(actual)
+    limit_disp = f"{limit:.3f}" if isinstance(limit, (float, np.floating)) else str(limit)
+
     st.markdown(f"""
     <div class="check-box" style="border-left: 5px solid {color}; {bg_style}">
         <div style="display: flex; justify-content: space-between;">
             <strong style="font-size: 1.1em;">{name}</strong>
             <span style="color:{color}; font-weight:bold;">{status}</span>
         </div>
-        實際值: <code>{actual:.3f if isinstance(actual, float) else actual} {unit}</code> {symbol} 
-        限制值: <code>{limit:.3f if isinstance(limit, float) else limit} {unit}</code>
+        實際值: <code>{val_disp} {unit}</code> {symbol} 
+        限制值: <code>{limit_disp} {unit}</code>
         {f'<br><small style="color:#AAA;">{note}</small>' if note else ''}
     </div>
     """, unsafe_allow_html=True)
