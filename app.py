@@ -3,6 +3,66 @@ import numpy as np
 import plotly.graph_objects as go
 import math
 
+# ==========================================
+# UI 與數值輔助函式 (3位有效數字轉換)
+# ==========================================
+def to_sig_fig(val, sig_figs=3):
+    if val == 0 or np.isnan(val) or np.isinf(val):
+        return "0.00"
+    try:
+        val_abs = abs(float(val))
+        # 計算數量級
+        order = int(math.floor(math.log10(val_abs)))
+        # 決定需要捨入到小數點後第幾位
+        decimals = sig_figs - 1 - order
+        rounded = round(val_abs, decimals)
+        
+        # 再次檢查進位後的位數 (例如 9.99 捨入後變成 10.0，數量級會進位)
+        new_order = int(math.floor(math.log10(rounded))) if rounded != 0 else 0
+        if new_order > order:
+            decimals = sig_figs - 1 - new_order
+            
+        if decimals <= 0:
+            result = str(int(round(rounded, 0)))
+        else:
+            fmt = f"{{:.{decimals}f}}"
+            result = fmt.format(rounded)
+        return "-" + result if val < 0 else result
+    except:
+        return str(val)
+
+def format_dcr(x):
+    return to_sig_fig(x)
+
+def check_item(name, val_str, is_ok):
+    color = "#00E000" if is_ok else "#FF0000"
+    status = "OK!" if is_ok else "NG!"
+    return f"- **{name}**: {val_str} &rarr; <span style='color:{color}; font-weight:bold;'>{status}</span>"
+
+def detail_check(name, actual, limit, unit="", is_lower_bound=False, highlight=False, note=""):
+    is_ok = actual >= limit if is_lower_bound else actual <= limit
+    color = "#00E000" if is_ok else "#FF0000"
+    symbol = "≥" if is_lower_bound else "≤"
+    status = "OK!" if is_ok else "NG!"
+    bg_style = "background-color: rgba(255, 255, 0, 0.15);" if highlight else "background-color: rgba(255,255,255,0.05);"
+    
+    # 全面套用 3 位有效數字
+    val_disp = to_sig_fig(actual) if isinstance(actual, (float, int, np.floating, np.integer)) else str(actual)
+    limit_disp = to_sig_fig(limit) if isinstance(limit, (float, int, np.floating, np.integer)) else str(limit)
+
+    st.markdown(f"""
+    <div class="check-box" style="border-left: 5px solid {color}; {bg_style}">
+        <div style="display: flex; justify-content: space-between;">
+            <strong style="font-size: 1.1em;">{name}</strong>
+            <span style="color:{color}; font-weight:bold;">{status}</span>
+        </div>
+        實際值: <code>{val_disp} {unit}</code> {symbol} 
+        限制值: <code>{limit_disp} {unit}</code>
+        {f'<br><small style="color:#AAA;">{note}</small>' if note else ''}
+    </div>
+    """, unsafe_allow_html=True)
+
+
 # --- 頁面基本設定 ---
 st.set_page_config(page_title="TP-SYSC計算機", layout="wide")
 
@@ -131,7 +191,7 @@ with st.sidebar.expander("TP-SYSC 高度與角度設定", expanded=True):
     
     h_SYSC_mm = (h_EJ_mm * 2) + h_IC_mm + (2 * ts_End)
     h_SYSC = h_SYSC_mm / 1000.0
-    st.info(f"📐 計算所得間柱總高 $h_{{SYSC}}$: **{h_SYSC:.3f}** m")
+    st.info(f"📐 計算所得間柱總高 $h_{{SYSC}}$: **{to_sig_fig(h_SYSC)}** m")
 
     theta_deg = st.number_input("輸入錐形角度 θ (deg)", value=5.0, min_value=0.0, max_value=90.0, step=0.5)
     theta_sol = math.radians(theta_deg)
@@ -239,8 +299,7 @@ rs_ratio = rs_stiff / rs_star
 # 根據配置逆推最大剪應變需求 gamma_u
 gamma_u = 0.5 * (8.5 * kc / ((hs_val / tw_IC) ** 2) + gamma_y)
 
-
-# 邊界構架計算 (修補缺失的 Mp_beam 與 Vn_beam 變數)
+# 邊界構架計算
 L_b_mm = L_b * 1000.0
 Zx_beam = bf_b * tf_b * (d_b - tf_b) + tw_b * (d_b / 2 - tf_b)**2
 Mp_beam = Zx_beam * Fy_beam
@@ -255,31 +314,9 @@ V_b = (M_b1 + M_b2) / L_prime
 V_u_PZ = (V_ult * h_SYSC_mm / (d_EJ2 - tf_EJ)) - V_b
 V_n_PZ = 0.6 * Fy_beam * d_b * (tw_b + t_dp)
 
-# ==========================================
-# UI 輔助函式
-# ==========================================
-def detail_check(name, actual, limit, unit="", is_lower_bound=False, highlight=False, note=""):
-    is_ok = actual >= limit if is_lower_bound else actual <= limit
-    color = "#00E000" if is_ok else "#FF0000"
-    symbol = "≥" if is_lower_bound else "≤"
-    status = "OK!" if is_ok else "NG!"
-    bg_style = "background-color: rgba(255, 255, 0, 0.15);" if highlight else "background-color: rgba(255,255,255,0.05);"
-    
-    # 修正 f-string 格式化錯誤
-    val_disp = f"{actual:.3f}" if isinstance(actual, (float, np.floating)) else str(actual)
-    limit_disp = f"{limit:.3f}" if isinstance(limit, (float, np.floating)) else str(limit)
-
-    st.markdown(f"""
-    <div class="check-box" style="border-left: 5px solid {color}; {bg_style}">
-        <div style="display: flex; justify-content: space-between;">
-            <strong style="font-size: 1.1em;">{name}</strong>
-            <span style="color:{color}; font-weight:bold;">{status}</span>
-        </div>
-        實際值: <code>{val_disp} {unit}</code> {symbol} 
-        限制值: <code>{limit_disp} {unit}</code>
-        {f'<br><small style="color:#AAA;">{note}</small>' if note else ''}
-    </div>
-    """, unsafe_allow_html=True)
+dcr_beam_M = M_b1 / Mp_beam
+dcr_beam_V = V_b / Vn_beam
+dcr_PZ = V_u_PZ / V_n_PZ
 
 # ==========================================
 # 輸出分頁
@@ -300,12 +337,12 @@ with tab1:
 
 with tab2:
     st.subheader("3. 加勁板詳細檢核")
-    st.info(f"核心段目標剪應變 γd: **{gamma_d:.4f}** rad (論文 Eq. 31)")
+    st.info(f"核心段目標剪應變 γd: **{to_sig_fig(gamma_d * 100)}** %rad")
     detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, note="隨 θd 動態變化 (Eq. 32)")
     detail_check("標準化寬厚比 λnw (上限)", lambda_nw, 0.6)
     detail_check("標準化寬厚比 λnw (下限)", lambda_nw, 0.145, is_lower_bound=True)
-    detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=f"γd={gamma_d:.2f}, 門檻取 {rs_star_threshold}")
-    st.markdown(f"推算最大剪應變容量 $\gamma_u$: **{gamma_u:.4f}** rad (依據目前加勁板配置)")
+    detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=f"γd={to_sig_fig(gamma_d * 100)} %rad, 門檻取 {to_sig_fig(rs_star_threshold)}")
+    st.markdown(f"推算最大剪應變容量 $\gamma_u$: **{to_sig_fig(gamma_u * 100)}** %rad (依據目前加勁板配置)")
 
 with tab3:
     st.subheader("4. 邊界梁與交會區容量設計")
@@ -335,9 +372,9 @@ with tab4:
     st.markdown(f"""
     - **IC 核心段斷面**: `{ic_profile}` (SN400B)
     - **EJ 連接段型鋼**: `{ej_profile}` (SN490B)
-    - **EJ 端深度 $d_{{EJ2}}$**: **{d_EJ2:.1f}** mm
-    - **推算最大剪應變 $\gamma_u$**: **{gamma_u:.4f}** rad
-    - **極限設計剪力 $V_{{max}}$**: **{Vmax/1000:.0f}** kN (考慮材料超強與應變硬化)
+    - **EJ 端深度 $d_{{EJ2}}$**: **{to_sig_fig(d_EJ2)}** mm
+    - **推算最大剪應變 $\gamma_u$**: **{to_sig_fig(gamma_u * 100)}** %rad
+    - **極限設計剪力 $V_{{max}}$**: **{to_sig_fig(Vmax/1000)}** kN (考慮材料超強與應變硬化)
     """)
 
     # 示意圖 (維持配色)
