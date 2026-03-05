@@ -228,75 +228,53 @@ with st.sidebar.expander("邊界構架尺寸"):
     t_dp = st.number_input("交會區貼板厚度 t_dp (mm)", value=15.0, step=1.0)
 
 # ==========================================
-# 核心力學引擎 (更新依據 2025 期刊與等效柔度理論)
+# 核心力學引擎 (修正：串聯柔度法 + 精確積分)
 # ==========================================
-Fy_Stiff = STEEL_DB[mat_stiff]["Fy"]
-Fy_beam = STEEL_DB[mat_beam]["Fy"]
-E = E_GPa * 1000.0 
-G = E / (2 * (1 + nu))
+E = E_GPa * 1000.0; nu = 0.3; G = E / (2 * (1 + nu))
 theta_d = target_drift / 100.0
 
 d_EJ1 = d_IC
 d_EJ2 = d_EJ1 + 2 * h_EJ_mm * math.tan(theta_sol)
 
-# -----------------------------------
-# 第一步：計算 EJ 段兩端的原始慣性矩與剪力面積
-# -----------------------------------
-Ix_EJ1 = 1/12 * (bf_EJ * d_EJ1**3 - (bf_EJ - tw_EJ) * (d_EJ1 - 2 * tf_EJ)**3)
-Ix_EJ2 = 1/12 * (bf_EJ * d_EJ2**3 - (bf_EJ - tw_EJ) * (d_EJ2 - 2 * tf_EJ)**3)
-Ix_IC = 1/12 * (bf_IC * d_IC**3 - (bf_IC - tw_IC) * (d_IC - 2 * tf_IC)**3)
+# 1. 核心段性質與柔度 (f_IC)
+Ix_IC = (bf_IC * d_IC**3 - (bf_IC - tw_IC) * (d_IC - 2 * tf_IC)**3) / 12.0
+Av_IC = d_IC * tw_IC
+f_IC = h_IC_mm / (G * Av_IC) + h_IC_mm**3 / (12.0 * E * Ix_IC)
 
-I_EJ1 = Ix_EJ1
-I_EJ2 = Ix_EJ2
-Av_EJ1 = tw_EJ * d_EJ1
-Av_EJ2 = tw_EJ * d_EJ2
+# 2. 連接段斷面性質 (EJ1 & EJ2)
+I_EJ1 = (bf_EJ * d_EJ1**3 - (bf_EJ - tw_EJ) * (d_EJ1 - 2 * tf_EJ)**3) / 12.0
+I_EJ2 = (bf_EJ * d_EJ2**3 - (bf_EJ - tw_EJ) * (d_EJ2 - 2 * tf_EJ)**3) / 12.0
+Av_EJ1 = d_EJ1 * tw_EJ
+Av_EJ2 = d_EJ2 * tw_EJ
 
-# -----------------------------------
-# 第二步：計算「等效剪力面積」(Av_eq_EJ)
-# -----------------------------------
-if abs(Av_EJ2 - Av_EJ1) > 1e-5:
-    Av_eq_EJ = (Av_EJ2 - Av_EJ1) / math.log(Av_EJ2 / Av_EJ1)
-else:
-    Av_eq_EJ = Av_EJ1
+# 3. EJ 等效性質轉換 (積分精確解)
+# 等效剪力面積
+Av_eq_EJ = (Av_EJ2 - Av_EJ1) / math.log(Av_EJ2 / Av_EJ1) if abs(Av_EJ2 - Av_EJ1) > 1e-5 else Av_EJ1
 
-# -----------------------------------
-# 第三步：計算「等效慣性矩」(I_eq_EJ)
-# -----------------------------------
-L_half = h_SYSC_mm / 2.0
-eta = h_IC_mm / h_SYSC_mm
-L0 = eta * L_half  # 核心段半高
-
-# 等效慣性矩 (由變斷面微積分精確解導出)
-a = math.sqrt(I_EJ2)
+# 等效慣性矩輔助參數
 b = math.sqrt(I_EJ1)
-dS = a - b
-
-# 等效慣性矩 (微積分精確解)
-a = math.sqrt(I_EJ2); b = math.sqrt(I_EJ1); dS = a - b
-if abs(dS) > 1e-5:
-    C_val = L_half - (h_EJ_mm * a) / dS
-    I_int = (h_EJ_mm**3 / dS**2) + (2.0 * h_EJ_mm**2 * C_val / dS**2) * math.log(a / b) + (h_EJ_mm * C_val**2) / (b * a)
-else:
-    I_int = (L_half**3 - L0**3) / (3.0 * I_EJ1)
-    
-# 根據 Term 2 公式逆推等效慣性矩 I_eq_EJ
-I_eq_EJ = (L_half**3 - L0**3) / (12.0 * I_int)
-
-# 彎矩梯度係數 (α)
+a = math.sqrt(I_EJ2)
 alpha_user = 0.5 * h_IC_mm / (h_EJ_mm + ts_End)
 
-# -----------------------------------
-# 第四步：組合計算 EJ 段總柔度 (f_EJ)
-# -----------------------------------
-term1_shear = h_EJ_mm / (G * Av_eq_EJ)
-term2_flex = (L_half**3 - L0**3) / (12.0 * E * I_eq_EJ)
-f_EJ = term1_shear + term2_flex # 單邊連接段柔度
+# I_eq_EJ 分母兩項計算 (修正變數名為 a, b)
+den_part1 = (alpha_user**2) / (a * b)
+den_part2 = (1.0 + b/a + (2.0*b/(b-a)) * math.log(a/b)) / (b - a)**2 if abs(b-a) > 1e-5 else (1.0 / I_EJ1)
 
+I_eq_EJ = (alpha_user**2 + 1.0/3.0) / (den_part1 + den_part2)
+
+# 4. 連接段總柔度 (f_EJ，包含上下兩段)
+eta = h_IC_mm / h_SYSC_mm
+f_EJ_shear = ((1.0 - eta) * h_SYSC_mm) / (G * Av_eq_EJ)
+f_EJ_flex = (h_SYSC_mm**3 - h_IC_mm**3) / (12.0 * E * I_eq_EJ)
+f_EJ = f_EJ_shear + f_EJ_flex
+f_total = f_IC + f_EJ
+
+# 5. 系統總勁度 (K_eff)
 # 整體側向勁度組合計算 (IC 與 兩段 EJ 串聯)
 K_EE = 1.0 / (2.0 * f_EJ) # 系統中兩段 EJ 串聯對應之勁度
 Ke_IC = 1.0 / (h_IC_mm / (G * tw_IC * d_IC) + h_IC_mm**3 / (12 * E * Ix_IC))
 Kp_IC = 1.0 / (h_IC_mm / (0.02 * G * tw_IC * d_IC) + h_IC_mm**3 / (12 * E * Ix_IC))
-Ke_F = 1.0 / (1.0 / Ke_IC + 1.0 / K_EE) # 整體初始彈性側向勁度
+Ke_F = 1.0 / f_total # 整體初始彈性側向勁度
 Kp_F = 1.0 / (1.0 / Kp_IC + 1.0 / K_EE) # 整體降伏後側向勁度
 
 theta_y = 0.6 * Fy_IC * tw_IC * d_IC / (Ke_F * h_SYSC_mm)
@@ -576,6 +554,7 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
