@@ -102,8 +102,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("錐形變斷面耐震間柱 (TP-SYSC) 計算機")
-st.markdown("依據 2025《結構工程學刊》TVSC 設計準則優化 | 作者：傻逼巴拉")
+st.title("梯形變斷面剪力降伏型耐震間柱 (TP-SYSC) 計算機")
+st.markdown("作者：傻逼巴拉")
 
 # ==========================================
 # 內建資料庫 (CNS RH 型鋼)
