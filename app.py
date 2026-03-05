@@ -168,8 +168,8 @@ with st.sidebar.expander("耐震目標", expanded=True):
     target_drift = st.number_input("目標層間側移角 θd (%rad)", min_value=1.0, max_value=5.0, value=3.0, step=0.5)
 
 with st.sidebar.expander("材料性質", expanded=True):
-    mat_ic_w = st.selectbox("核心段腹板鋼材 (IC Web)", list(STEEL_DB.keys()), index=0, help="建議採用 SN400B")
-    mat_ej_w = st.selectbox("連接段與翼板鋼材 (EJ & Flange)", list(STEEL_DB.keys()), index=1, help="建議採用 SN490B")
+    mat_ic_w = st.selectbox("核心段腹板鋼材 (IC Web)", list(STEEL_DB.keys()), index=1)
+    mat_ej_w = st.selectbox("連接段與翼板鋼材 (EJ & Flange)", list(STEEL_DB.keys()), index=1)
     mat_stiff = st.selectbox("加勁板鋼材", list(STEEL_DB.keys()), index=1)
     E_GPa = st.number_input("楊氏模數 E (GPa)", value=200.0, step=1.0)
     nu = 0.3
