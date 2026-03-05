@@ -430,13 +430,14 @@ with tab4:
             detail_check("加勁板 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}")
             detail_check("加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"\gamma_s / \gamma_s^* \ge " + str(to_sig_fig(rs_star_threshold)))
             detail_check("邊界梁彎矩 DCR", M_b1/Mp_beam, 1.0, note=r"M_{b1} = \dots")
-            
+            detail_check("交會區剪力 DCR", V_u_PZ/V_n_PZ, 1.0, note=r"V_{u,PZ} = \dots")
+
     st.divider()
     st.subheader("📝 設計總覽 (Summary)")
     st.markdown(f"""
-    - **IC 核心段斷面**: `{ic_profile}` ({mat_sn})
-    - **EJ 連接段型鋼**: `{ej_profile}` ({mat_sn})
-    - **梁構架鋼材**: `{mat_beam}` ({mat_beam})
+    - **IC 核心段斷面**: `{ic_profile}` ({mat_ic_w})
+    - **EJ 連接段型鋼**: `{ej_profile}` ({mat_ej_w})
+    - **梁構架鋼材**: `{mat_beam}`
     - **推算最大剪應變 $\gamma_u$**: **{to_sig_fig(gamma_u * 100)}** %rad
     - **極限設計剪力 $V_{{max}}$**: **{to_sig_fig(Vmax/1000)}** kN
     - **TP-SYSC 彈性側向勁度 $K_{{eff}}$**: **{to_sig_fig(K_eff_kN_mm)}** kN/mm
