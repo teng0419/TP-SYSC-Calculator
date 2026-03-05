@@ -253,7 +253,7 @@ Av_EJ2 = d_EJ2 * tw_EJ
 # 3. EJ 等效性質轉換 (積分精確解)
 Av_eq_EJ = (Av_EJ2 - Av_EJ1) / math.log(Av_EJ2 / Av_EJ1) if abs(Av_EJ2 - Av_EJ1) > 1e-5 else Av_EJ1
 
-# 輔助變數與比例 (修正 L_half 變數名)
+# 輔助變數與比例
 L_half = h_SYSC_mm / 2.0
 b = math.sqrt(I_EJ1)
 a = math.sqrt(I_EJ2)
@@ -400,6 +400,7 @@ with tab1:
     st.subheader("2. 容量設計 (Capacity Design)")
     detail_check("EJ段剪力 (Vmax vs φVn)", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})")
     detail_check("EJ段彎矩 (Mu vs φMn)", (Vmax*h_SYSC_mm/2)/1e6, Mn_EJ_design/1e6, "kNm", note=r"M_u = V_{max}h_{TVSC}/2 \le \phi M_{n,EJ}")
+    detail_check("IC段翼板彎矩 (Mu vs φMn)", (Vmax*h_IC_mm/2)/1e6, Mn_IC_design/1e6, "kNm", note=r"M_{u,IC} = V_{max}h_{IC}/2 \le \phi M_{n,IC(flange)}")
 
 with tab2:
     st.subheader("3. 加勁板詳細檢核")
@@ -434,6 +435,7 @@ with tab4:
             detail_check("未側撐長度 Lb", h_SYSC_mm, Lr_limit, "mm", note=r"L_r = 1.95 r_{ts} \frac{E}{0.7F_y} \sqrt{\dots}")
             detail_check("EJ段剪力容量設計", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})")
             detail_check("EJ段彎矩容量設計", (Vmax*h_SYSC_mm/2)/1e6, Mn_EJ_design/1e6, "kN-m", note=r"M_u = V_{max}h_{TVSC}/2 \le \phi M_{n,EJ}")
+            detail_check("IC段翼板彎矩容量", (Vmax*h_IC_mm/2)/1e6, Mn_IC_design/1e6, "kN-m", note=r"M_{u,IC} \le \phi M_{n,IC}")
         with col_r:
             detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}")
             detail_check("最適加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"\gamma_s / \gamma_s^* \ge " + str(to_sig_fig(rs_star_threshold)))
@@ -512,8 +514,8 @@ with tab4:
         # 新增中心切割虛線，象徵由 H 型鋼切割組裝而成
         fig.add_shape(type="line", x0=0, x1=0, y0=ys, y1=ye, line=dict(color="black", width=2.5, dash="dash"))
 
-    draw_ej(h_SYSC_mm-h_EJ_mm, h_SYSC_mm, d_EJ1, d_EJ2, tf_EJ, c_web_ej, flip=False)
     draw_ej(0, h_EJ_mm, d_EJ2, d_EJ1, tf_EJ, c_web_ej, flip=True)
+    draw_ej(h_SYSC_mm-h_EJ_mm, h_SYSC_mm, d_EJ1, d_EJ2, tf_EJ, c_web_ej, flip=False)
 
     # 繪製 端部加勁板
     w_end = d_IC + 20.0
@@ -545,5 +547,3 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
-
-
