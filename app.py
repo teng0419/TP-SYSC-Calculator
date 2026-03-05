@@ -381,19 +381,28 @@ with tab4:
     - **極限設計剪力 $V_{{max}}$**: **{to_sig_fig(Vmax/1000)}** kN (考慮材料超強與應變硬化)
     """)
 
-    # 示意圖 (維持配色)
+    # 示意圖 (高對比度專屬配色)
     fig = go.Figure()
-    c_flange_ic, c_flange_ej = "#FFFFFF", "#E0E0E0"
-    c_web_ic, c_web_ej = "#FFF99E", "#7CB3FF"
-    c_stiff, c_col = "#222222", "#444444"
-    c_beam_web, c_beam_flange = "#444444", "#333333"
-    c_pz_doubler, c_end_plate = "#777777", "#F28500"
+    c_flange_ic = "#FF3B30"  # 亮紅色 (IC 翼板)
+    c_flange_ej = "#FF9500"  # 亮橘色 (EJ 翼板)
+    c_web_ic = "#FFD60A"     # 亮黃色 (IC 腹板)
+    c_web_ej = "#0A84FF"     # 亮藍色 (EJ 腹板)
+    c_stiff = "#32D74B"      # 螢光綠 (加勁板)
+    c_end_plate = "#BF5AF2"  # 亮紫色 (端部板)
+    c_beam_web = "#636366"   # 灰色 (梁腹板)
+    c_beam_flange = "#48484A"# 深灰色 (梁翼板)
+    c_col = "#2C2C2E"        # 背景柱深灰
     line_s = dict(color="white", width=0.0)
 
     x_L, x_R = -L_b*1000/2, L_b*1000/2
-    y_ic_b = h_EJ_mm + ts_End
+    y_end_bot_s = h_EJ_mm
+    y_end_bot_e = y_end_bot_s + ts_End
+    y_ic_b = y_end_bot_e
     y_ic_t = y_ic_b + h_IC_mm
+    y_end_top_s = y_ic_t
+    y_end_top_e = y_end_top_s + ts_End
     
+    # 繪製邊界柱與梁
     fig.add_shape(type="rect", x0=x_L-d_c/2, x1=x_L+d_c/2, y0=-d_b, y1=h_SYSC_mm+d_b, fillcolor=c_col, opacity=0.3, line=line_s)
     fig.add_shape(type="rect", x0=x_R-d_c/2, x1=x_R+d_c/2, y0=-d_b, y1=h_SYSC_mm+d_b, fillcolor=c_col, opacity=0.3, line=line_s)
     def draw_beam(y_start, d_bm, tf_bm, is_top=False):
@@ -407,6 +416,7 @@ with tab4:
     draw_beam(0, d_b, tf_b, is_top=False)
     draw_beam(h_SYSC_mm, d_b, tf_b, is_top=True)
 
+    # 繪製 EJ 段
     def draw_ej(ys, ye, ds, de, tfv, cw, flip=False):
         dsm, dlg = (de, ds) if flip else (ds, de)
         ysm, ylg = (ye, ys) if flip else (ys, ye)
@@ -416,16 +426,33 @@ with tab4:
     draw_ej(h_SYSC_mm-h_EJ_mm, h_SYSC_mm, d_EJ1, d_EJ2, tf_EJ, c_web_ej, flip=False)
     draw_ej(0, h_EJ_mm, d_EJ2, d_EJ1, tf_EJ, c_web_ej, flip=True)
 
-    fig.add_shape(type="rect", x0=-d_IC/2, x1=d_IC/2, y0=y_ic_b, y1=y_ic_t, fillcolor=c_web_ic, line=line_s)
+    # 繪製 端部加勁板
+    w_end = d_IC + 20.0
+    fig.add_shape(type="rect", x0=-w_end/2, x1=w_end/2, y0=y_end_bot_s, y1=y_end_bot_e, fillcolor=c_end_plate, line=line_s)
+    fig.add_shape(type="rect", x0=-w_end/2, x1=w_end/2, y0=y_end_top_s, y1=y_end_top_e, fillcolor=c_end_plate, line=line_s)
+
+    # 繪製 IC 段 (拆分翼板與腹板)
+    fig.add_shape(type="rect", x0=-d_IC/2, x1=-d_IC/2+tf_IC, y0=y_ic_b, y1=y_ic_t, fillcolor=c_flange_ic, line=line_s)
+    fig.add_shape(type="rect", x0=d_IC/2-tf_IC, x1=d_IC/2, y0=y_ic_b, y1=y_ic_t, fillcolor=c_flange_ic, line=line_s)
+    fig.add_shape(type="rect", x0=-d_IC/2+tf_IC, x1=d_IC/2-tf_IC, y0=y_ic_b, y1=y_ic_t, fillcolor=c_web_ic, line=line_s)
+    
+    # 繪製 IC 段面外加勁板 (增加線寬至 3.0，使用高對比綠色)
     hw_ic_net = d_IC - 2 * tf_IC
     if nT > 0:
         for i in range(1, int(nT) + 1):
             yc = y_ic_b + i * (h_IC_mm / (nT + 1))
-            fig.add_shape(type="line", x0=-hw_ic_net/2, x1=hw_ic_net/2, y0=yc, y1=yc, line=dict(color=c_stiff, width=1.5))
+            fig.add_shape(type="line", x0=-hw_ic_net/2, x1=hw_ic_net/2, y0=yc, y1=yc, line=dict(color=c_stiff, width=3.0))
     if nL > 0:
         for i in range(1, int(nL) + 1):
             xc = -hw_ic_net/2 + i * (hw_ic_net / (nL + 1))
-            fig.add_shape(type="line", x0=xc, x1=xc, y0=y_ic_b, y1=y_ic_t, line=dict(color=c_stiff, width=1.5))
+            fig.add_shape(type="line", x0=xc, x1=xc, y0=y_ic_b, y1=y_ic_t, line=dict(color=c_stiff, width=3.0))
 
-    fig.update_layout(height=700, template="plotly_dark", yaxis=dict(scaleanchor="x", scaleratio=1), margin=dict(l=10,r=10,t=10,b=10))
+    # 隱藏所有格線與座標，突顯結構模型
+    fig.update_layout(
+        height=700, 
+        template="plotly_dark", 
+        yaxis=dict(scaleanchor="x", scaleratio=1, showgrid=False, zeroline=False, showticklabels=False),
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        margin=dict(l=10,r=10,t=10,b=10)
+    )
     st.plotly_chart(fig, use_container_width=True)
