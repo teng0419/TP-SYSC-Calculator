@@ -57,8 +57,8 @@ def detail_check(name, actual, limit, unit="", is_lower_bound=False, highlight=F
             <strong style="font-size: 1.1em;">{name}</strong>
             <span style="color:{color}; font-weight:bold;">{status}</span>
         </div>
-        實際值: <code>{val_disp} {unit}</code> {symbol} 
-        限制值: <code>{limit_disp} {unit}</code>
+        設計值: <code>{val_disp} {unit}</code> {symbol} 
+        規範值: <code>{limit_disp} {unit}</code>
     </div>
     """, unsafe_allow_html=True)
     
@@ -435,7 +435,7 @@ with tab4:
             detail_check("未側撐長度 Lb", h_SYSC_mm, Lr_limit, "mm", note=r"L_r = 1.95 r_{ts} \frac{E}{0.7F_y} \sqrt{\dots}")
             detail_check("EJ段剪力容量設計", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})")
             detail_check("EJ段彎矩容量設計", (Vmax*h_SYSC_mm/2)/1e6, Mn_EJ_design/1e6, "kN-m", note=r"M_u = V_{max}h_{TVSC}/2 \le \phi M_{n,EJ}")
-            detail_check("IC段翼板彎矩容量", (Vmax*h_IC_mm/2)/1e6, Mn_IC_design/1e6, "kN-m", note=r"M_{u,IC} \le \phi M_{n,IC}")
+            detail_check("IC段彎矩容量設計", (Vmax*h_IC_mm/2)/1e6, Mn_IC_design/1e6, "kN-m", note=r"M_{u,IC} \le \phi M_{n,IC}")
         with col_r:
             detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}")
             detail_check("最適加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"\gamma_s / \gamma_s^* \ge " + str(to_sig_fig(rs_star_threshold)))
@@ -547,3 +547,4 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
