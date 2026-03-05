@@ -861,7 +861,7 @@ with tab2:
     st.markdown(f"最大剪應變 $\gamma_u$: **{to_sig_fig(gamma_u * 100)}** %rad (依據目前加勁板配置)")
     st.markdown(r"↳ $\gamma_u = 0.5\left(\frac{8.5k_c}{(h_s/t_w)^2} + \gamma_y\right)$")
     
-    st.markdown"最大層間位移角 $\\theta_u$: **{to_sig_fig(theta_u * 100)}** %rad")
+    st.markdown(f"最大層間位移角 $\\theta_u$: **{to_sig_fig(theta_u * 100)}** %rad")
     st.markdown(r"↳ $\theta_u = \theta_y + (\gamma_u - \gamma_y) \frac{h_{IC}}{h_{SYSC}}$")
 
 with tab3:
@@ -985,6 +985,7 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
