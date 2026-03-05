@@ -851,17 +851,17 @@ with tab1:
 with tab2:
     st.subheader("3. 加勁板配置設計檢核")
     st.markdown(f"IC段目標剪應變 γd: **{to_sig_fig(gamma_d * 100)}** %rad")
-    st.markdown(r"↳ $\gamma_d = \frac{h_{TVSC}}{h_{IC}}(\theta_d - \theta_{e,d})$")
+    st.info(r"↳ $\gamma_d = \frac{h_{TVSC}}{h_{IC}}(\theta_d - \theta_{e,d})$")
     detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}")
     detail_check("標準化寬厚比 λnw (上限)", lambda_nw, 0.6, note=r"\lambda_{nw} = \frac{h_s}{t_w}\sqrt{\frac{0.6F_y}{k_c E}} \le 0.6")
     detail_check("標準化寬厚比 λnw (下限)", lambda_nw, 0.145, is_lower_bound=True, note=r"\lambda_{nw} \ge 0.145")
     detail_check("最適加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"\gamma_s / \gamma_s^* \ge " + str(to_sig_fig(rs_star_threshold)))
     
     st.divider()
-    st.markdown(f"最大剪應變 $\gamma_u$: **{to_sig_fig(gamma_u * 100)}** %rad (依據目前加勁板配置)")
+    st.info(f"最大剪應變 $\gamma_u$: **{to_sig_fig(gamma_u * 100)}** %rad (依據目前加勁板配置)")
     st.markdown(r"↳ $\gamma_u = 0.5\left(\frac{8.5k_c}{(h_s/t_w)^2} + \gamma_y\right)$")
     
-    st.markdown(f"最大層間位移角 $\\theta_u$: **{to_sig_fig(theta_u * 100)}** %rad")
+    st.info"最大層間位移角 $\\theta_u$: **{to_sig_fig(theta_u * 100)}** %rad")
     st.markdown(r"↳ $\theta_u = \theta_y + (\gamma_u - \gamma_y) \frac{h_{IC}}{h_{SYSC}}$")
 
 with tab3:
@@ -985,5 +985,6 @@ with tab4:
         margin=dict(l=10,r=10,t=10,b=10)
     )
     st.plotly_chart(fig, use_container_width=True)
+
 
 
