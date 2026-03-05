@@ -57,8 +57,8 @@ def detail_check(name, actual, limit, unit="", is_lower_bound=False, highlight=F
             <strong style="font-size: 1.1em;">{name}</strong>
             <span style="color:{color}; font-weight:bold;">{status}</span>
         </div>
-        設計值: <code>{val_disp} {unit}</code> {symbol} 
-        規範值: <code>{limit_disp} {unit}</code>
+        實際值: <code>{val_disp} {unit}</code> {symbol} 
+        限制值: <code>{limit_disp} {unit}</code>
     </div>
     """, unsafe_allow_html=True)
     
@@ -106,14 +106,15 @@ st.title("梯形變斷面剪力降伏型耐震間柱 (TP-SYSC) 計算機")
 st.markdown("作者：傻逼巴拉")
 
 # ==========================================
-# 內建資料庫 (CNS RH 型鋼)
+# 內建資料庫 (材料與型鋼斷面)
 # ==========================================
 STEEL_DB = {
     "SN400B": {"Fy": 235, "Ry": 1.3, "Omega": 1.5},
     "SN490B": {"Fy": 325, "Ry": 1.2, "Omega": 1.3},
 }
 
-RH_DATA = {
+# 1. 台灣 CNS 標準 RH 型鋼
+CNS_RH_database = {
     "294 X 302 X 12 X 12": (294, 302, 12, 12), "300 X 300 X 10 X 15": (300, 300, 10, 15),
     "300 X 305 X 15 X 15": (300, 305, 15, 15), "304 X 301 X 11 X 17": (304, 301, 11, 17),
     "312 X 303 X 13 X 21": (312, 303, 13, 21), "318 X 307 X 17 X 24": (318, 307, 17, 24),
@@ -161,390 +162,504 @@ RH_DATA = {
     "816 X 306 X 20 X 34": (816, 306, 20, 34), "828 X 308 X 22 X 40": (828, 308, 22, 40)
 }
 
-# ==========================================
-# 設計者輸入區
-# ==========================================
-st.sidebar.header("📝 設計輸入參數")
-
-with st.sidebar.expander("耐震目標", expanded=True):
-    target_drift = st.number_input("目標層間側移角 θd (%rad)", min_value=1.0, max_value=5.0, value=3.0, step=0.5)
-
-with st.sidebar.expander("材料性質", expanded=True):
-    mat_ic_w = st.selectbox("核心段腹板鋼材 (IC Web)", list(STEEL_DB.keys()), index=1)
-    mat_ej_w = st.selectbox("連接段與翼板鋼材 (EJ & Flange)", list(STEEL_DB.keys()), index=1)
-    mat_stiff = st.selectbox("加勁板鋼材", list(STEEL_DB.keys()), index=1)
-    E_GPa = st.number_input("楊氏模數 E (GPa)", value=200.0, step=1.0)
-    nu = 0.3
-    
-    Fy_IC = STEEL_DB[mat_ic_w]["Fy"]
-    Ry_IC = STEEL_DB[mat_ic_w]["Ry"]
-    Omega_IC = STEEL_DB[mat_ic_w]["Omega"]
-    Fy_EJ = STEEL_DB[mat_ej_w]["Fy"]
-    Ry_EJ = STEEL_DB[mat_ej_w]["Ry"]
-
-with st.sidebar.expander("TP-SYSC 高度與角度設定", expanded=True):
-    h_SYSC_mm = st.number_input("間柱總高度 h_SYSC (mm)", value=2600.0, step=10.0)
-    h_IC_mm = st.number_input("核心段高度 h_IC (mm)", value=750.0, step=10.0)
-    
-    ic_profile = st.selectbox("選取 IC 段核心斷面", list(RH_DATA.keys()), index=list(RH_DATA.keys()).index("488 X 300 X 11 X 18"))
-    d_IC, bf_IC, tw_IC, tf_IC = RH_DATA[ic_profile]
-
-    ts_End = st.number_input("端部板厚度 ts_End (mm)", value=float(tf_IC), step=1.0)
-    
-    # 改為由 h_SYSC 反推計算 h_EJ
-    h_EJ_mm = (h_SYSC_mm - h_IC_mm - 2 * ts_End) / 2.0
-    h_SYSC = h_SYSC_mm / 1000.0
-    st.info(f"📐 計算所得單邊連接段高度 $h_{{EJ}}$: **{to_sig_fig(h_EJ_mm)}** mm")
-
-    theta_deg = st.number_input("輸入錐形角度 θ (deg)", value=8.5, min_value=0.0, max_value=90.0, step=0.5)
-    theta_sol = math.radians(theta_deg)
-
-    # 根據輸入的 theta 篩選 EJ (優化篩選邏輯，給予 2mm 標稱容差確保標準型鋼不被濾掉)
-    d_EJ0_min_req = (d_IC + h_EJ_mm * math.tan(theta_sol)) * math.cos(theta_sol)
-    filtered_ej_options = [name for name, (d_v, bf_v, tw_v, tf_v) in RH_DATA.items() if (abs(bf_v - bf_IC) <= 20 and d_v >= d_EJ0_min_req - 2.0)]
-    if not filtered_ej_options: filtered_ej_options = list(RH_DATA.keys())
-    
-    # 嘗試將預設 EJ 型鋼設為 616 X 308 X 20 X 34
-    try:
-        default_ej_idx = filtered_ej_options.index("616 X 308 X 20 X 34")
-    except ValueError:
-        default_ej_idx = 0
-        
-    ej_profile = st.selectbox("選取 EJ 段型鋼斷面", filtered_ej_options, index=default_ej_idx)
-    d_EJ0, bf_EJ, tw_EJ, tf_EJ = RH_DATA[ej_profile]
-
-with st.sidebar.expander("加勁板配置"):
-    n_v = st.number_input("縱向加勁板數量 nL", min_value=0, value=1, step=1)
-    n_h = st.number_input("橫向加勁板數量 nT", min_value=0, value=2, step=1)
-    ts = st.number_input("加勁板厚度 ts (mm)", min_value=10.0, value=11.0, step=1.0)
-    bs = st.number_input("加勁板寬度 bs (mm)", min_value=90.0, value=99.0, step=9.0)
-
-with st.sidebar.expander("邊界構架尺寸"):
-    d_c = st.number_input("邊界柱深度 dc (mm)", value=500.0, step=50.0)
-    L_b = st.number_input("梁跨距 Lb (m)", value=6.0, step=0.1)
-    mat_beam = st.selectbox("邊界梁鋼材", list(STEEL_DB.keys()), index=1)
-    rh_beam = st.selectbox("選取邊界梁 RH 尺寸", list(RH_DATA.keys()), index=len(RH_DATA)-1)
-    d_b, bf_b, tw_b, tf_b = RH_DATA[rh_beam]
-    t_dp = st.number_input("交會區貼板厚度 t_dp (mm)", value=15.0, step=1.0)
-    Fy_beam = STEEL_DB[mat_beam]["Fy"]
-    
-# ==========================================
-# 核心力學引擎 (串聯柔度法 + 精確積分)
-# ==========================================
-E = E_GPa * 1000.0
-nu = 0.3
-G = E / (2 * (1 + nu))
-theta_d = target_drift / 100.0
-
-d_EJ1 = d_IC
-d_EJ2 = d_EJ1 + 2 * h_EJ_mm * math.tan(theta_sol)
-
-# 1. 核心段性質與柔度 (f_IC)
-Ix_IC = (bf_IC * d_IC**3 - (bf_IC - tw_IC) * (d_IC - 2 * tf_IC)**3) / 12.0
-Av_IC = d_IC * tw_IC
-f_IC = h_IC_mm / (G * Av_IC) + h_IC_mm**3 / (12.0 * E * Ix_IC)
-
-# 2. 連接段兩端性質
-I_EJ1 = (bf_EJ * d_EJ1**3 - (bf_EJ - tw_EJ) * (d_EJ1 - 2 * tf_EJ)**3) / 12.0
-I_EJ2 = (bf_EJ * d_EJ2**3 - (bf_EJ - tw_EJ) * (d_EJ2 - 2 * tf_EJ)**3) / 12.0
-Av_EJ1 = d_EJ1 * tw_EJ
-Av_EJ2 = d_EJ2 * tw_EJ
-
-# 3. EJ 等效性質轉換 (積分精確解)
-Av_eq_EJ = (Av_EJ2 - Av_EJ1) / math.log(Av_EJ2 / Av_EJ1) if abs(Av_EJ2 - Av_EJ1) > 1e-5 else Av_EJ1
-
-# 輔助變數與比例
-L_half = h_SYSC_mm / 2.0
-b = math.sqrt(I_EJ1)
-a = math.sqrt(I_EJ2)
-alpha_user = 0.5 * h_IC_mm / (h_EJ_mm + ts_End)
-L0_core = 0.5 * h_IC_mm 
-
-den_part1 = (alpha_user**2) / (a * b)
-den_part2 = (1.0 + b/a + (2.0*b/(b-a)) * math.log(a/b)) / (b - a)**2 if abs(b-a) > 1e-5 else (1.0 / I_EJ1)
-
-I_eq_EJ = (alpha_user**2 + 1.0/3.0) / (den_part1 + den_part2)
-
-# 4. 連接段總柔度 (f_EJ)
-eta = h_IC_mm / h_SYSC_mm
-f_EJ_shear = ((1.0 - eta) * h_SYSC_mm) / (G * Av_eq_EJ)
-f_EJ_flex = (h_SYSC_mm**3 - h_IC_mm**3) / (12.0 * E * I_eq_EJ)
-f_EJ = f_EJ_shear + f_EJ_flex
-f_total = f_IC + f_EJ
-
-# 5. 系統總勁度 (K_eff)
-# 整體側向勁度組合計算 (IC 與 兩段 EJ 串聯)
-K_EE = 1.0 / (2.0 * f_EJ) # 系統中兩段 EJ 串聯對應之勁度
-Ke_IC = 1.0 / (h_IC_mm / (G * tw_IC * d_IC) + h_IC_mm**3 / (12 * E * Ix_IC))
-Kp_IC = 1.0 / (h_IC_mm / (0.02 * G * tw_IC * d_IC) + h_IC_mm**3 / (12 * E * Ix_IC))
-Ke_F = 1.0 / f_total # 整體初始彈性側向勁度
-Kp_F = 1.0 / (1.0 / Kp_IC + 1.0 / K_EE) # 整體降伏後側向勁度
-
-theta_y = 0.6 * Fy_IC * tw_IC * d_IC / (Ke_F * h_SYSC_mm)
-theta_ed = (Ke_F / K_EE) * theta_y + (Kp_F / K_EE) * (theta_d - theta_y)
-
-# 強度與極限值
-Vn_IC = 0.6 * Fy_IC * tw_IC * d_IC
-Vmax = Omega_IC * Ry_IC * Vn_IC 
-
-# 1. 韌性檢核標準
-bf_ratio_limit = 0.38 * math.sqrt(E / (Ry_EJ * Fy_EJ))
-EJ_ratio_limit = 2.61 * math.sqrt(E / (Ry_EJ * Fy_EJ))
-
-# 2. LTB 放寬標準
-Iy_EJ2 = 1/12 * (tf_EJ * bf_EJ**3 * 2 + (d_EJ2 - 2 * tf_EJ) * tw_EJ**3)
-A_EJ2 = tf_EJ * bf_EJ * 2 + (d_EJ2 - 2 * tf_EJ) * tw_EJ
-ry_EJ2 = math.sqrt(Iy_EJ2 / A_EJ2)
-ho = d_EJ2 - tf_EJ
-J = (2 * bf_EJ * tf_EJ**3 + (d_EJ2 - 2 * tf_EJ) * tw_EJ**3) / 3
-Cw = Iy_EJ2 * ho**2 / 4
-Sx_EJ2 = (1/12 * (bf_EJ * d_EJ2**3 - (bf_EJ - tw_EJ) * (d_EJ2 - 2 * tf_EJ)**3)) / (d_EJ2/2)
-rts = math.sqrt(math.sqrt(Iy_EJ2 * Cw) / Sx_EJ2) if Sx_EJ2 > 0 else 0
-Lr_limit = 1.95 * rts * E / (0.7 * Fy_EJ) * math.sqrt(J / (Sx_EJ2 * ho) + math.sqrt((J / (Sx_EJ2 * ho))**2 + 6.76 * (0.7 * Fy_EJ / E)**2))
-
-# 3. 容量設計 (EJ 段與 IC 翼板)
-Vn_EJ_design = 0.9 * (0.6 * Fy_EJ * tw_EJ * d_EJ1)
-Zf_IC = bf_IC * tf_IC * (d_IC - tf_IC)
-Mn_IC_design = 0.9 * (Ry_IC * Zf_IC * Fy_IC)
-Zx_EJ2 = bf_EJ * tf_EJ * (d_EJ2 - tf_EJ) + tw_EJ * (d_EJ2 / 2 - tf_EJ)**2
-Mn_EJ_design = 0.9 * (Zx_EJ2 * Fy_EJ)
-
-# 4. 加勁板詳細參數
-gamma_d = (h_SYSC_mm / h_IC_mm) * (theta_d - theta_ed)
-gamma_y = (0.6 * Fy_IC) / G
-nL, nT = n_v, n_h
-ds_val = (d_IC - 2 * tf_IC) / (nL + 1.0) if nL > 0 else (d_IC - 2 * tf_IC)
-hs_val = h_IC_mm / (nT + 1.0) if nT > 0 else h_IC_mm
-alpha_s = ds_val / hs_val
-kc = (8.95 + 5.6 / (alpha_s**2)) if alpha_s >= 1.0 else (5.6 + 8.95 / (alpha_s**2))
-lambda_nw = (hs_val / tw_IC) * math.sqrt(0.6 * Fy_IC / (kc * E))
-hs_tw_limit = math.sqrt(8.5 * kc / (2 * gamma_d - gamma_y)) if (2 * gamma_d - gamma_y) > 0 else 200.0
-
-# 加勁剛度比需求
-rs_star_threshold = 2.0 if gamma_d > 0.12 else 1.0
-D_plate = E * tw_IC**3 / (12.0 * (1.0 - nu**2))
-Is_stiff = ts * bs**3 / 3.0
-rs_stiff = E * Is_stiff / (h_IC_mm * D_plate)
-alpha_s_log = np.log10(alpha_s) if alpha_s > 0 else 0
-rs_star = 152.7 * alpha_s_log**2 + 21.14 * alpha_s_log + 26.34
-rs_ratio = rs_stiff / rs_star
-
-# 根據配置逆推最大剪應變需求 gamma_u
-gamma_u = 0.5 * (8.5 * kc / ((hs_val / tw_IC) ** 2) + gamma_y)
-
-# --- 回推最大層間位移角 theta_u ---
-# θu = θy + (γu - γy) * (h_IC / h_SYSC)
-theta_u = theta_y + (gamma_u - gamma_y) * (h_IC_mm / h_SYSC_mm)
-
-# 邊界構架計算 
-L_b_mm = L_b * 1000.0
-Zx_beam = bf_b * tf_b * (d_b - tf_b) + tw_b * (d_b / 2 - tf_b)**2
-Mp_beam = Zx_beam * Fy_beam
-Vn_beam = 0.6 * Fy_beam * d_b * tw_b
-
-omega_beam = 1.1
-V_ult = omega_beam * Ry_IC * Vn_IC
-L_prime = (L_b_mm - d_EJ2 - d_c) / 2.0 
-M_b2 = 1.1 * Mp_beam
-M_b1 = (V_ult * (h_SYSC_mm / 2.0 + d_b / 2.0) - M_b2 * (d_EJ2 / (2.0 * L_prime))) / (1.0 + (d_EJ2 / (2.0 * L_prime)))
-V_b = (M_b1 + M_b2) / L_prime
-V_u_PZ = (V_ult * h_SYSC_mm / (d_EJ2 - tf_EJ)) - V_b
-V_n_PZ = 0.6 * Fy_beam * d_b * (tw_b + t_dp)
-
-dcr_beam_M = M_b1 / Mp_beam
-dcr_beam_V = V_b / Vn_beam
-dcr_PZ = V_u_PZ / V_n_PZ
-
-# ==========================================
-# 用鋼量與 KWR 計算 (kg)
-# ==========================================
-# 鋼材密度 (kg/mm^3)
-rho_steel = 7.85e-6
-
-# 1. IC段重量
-A_IC_exact = 2 * bf_IC * tf_IC + (d_IC - 2 * tf_IC) * tw_IC
-W_IC = A_IC_exact * h_IC_mm * rho_steel
-
-# 2. EJ段重量 (上下兩段)
-A_EJ_avg = 2 * bf_EJ * tf_EJ + ((d_EJ1 + d_EJ2) / 2.0 - 2 * tf_EJ) * tw_EJ
-W_EJ = 2 * A_EJ_avg * h_EJ_mm * rho_steel
-
-# 3. 端部板重量 (上下兩塊)
-W_ES = 2 * ((d_IC + 20.0) * max(bf_IC, bf_EJ) * ts_End) * rho_steel
-
-# 4. 加勁板重量
-W_stiff_T = (2 * nT * (d_IC - 2 * tf_IC) * bs * ts) * rho_steel
-W_stiff_L = (2 * nL * h_IC_mm * bs * ts) * rho_steel
-W_stiff = W_stiff_T + W_stiff_L
-
-# 總重量
-W_total = W_IC + W_EJ + W_ES + W_stiff
-
-# 計算 KWR 勁度重量比
-K_eff_kN_mm = Ke_F / 1000.0
-KWR = K_eff_kN_mm / W_total
-
-
-# ==========================================
-# 輸出分頁
-# ==========================================
-tab1, tab2, tab3, tab4 = st.tabs(["⚙️ 韌性設計與容量設計", "🛡️ 加勁板設計", "🏗️ 邊界梁與交會區容量設計", "📐 設計結果與示意圖"])
-
-with tab1:
-    st.subheader("1. 韌性設計 (Ductility Design)")
-    detail_check("EJ段翼板寬厚比 λf", bf_EJ/(2*tf_EJ), bf_ratio_limit, note=r"\lambda_{f,md} = 0.38\sqrt{E / R_y F_y}")
-    detail_check("EJ段腹板寬厚比 λw", (d_EJ2-2*tf_EJ)/tw_EJ, EJ_ratio_limit, note=r"\lambda_{w,md} = 2.61\sqrt{E / R_y F_y}")
-    detail_check("未側撐長度 Lb (放寬)", h_SYSC_mm, Lr_limit, "mm", note=r"L_r = 1.95 r_{ts} \frac{E}{0.7F_y} \sqrt{\frac{Jc}{S_x h_o} + \dots}")
-    
-    st.divider()
-    st.subheader("2. 容量設計 (Capacity Design)")
-    detail_check("EJ段剪力 (Vmax vs φVn)", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})")
-    detail_check("EJ段彎矩 (Mu vs φMn)", (Vmax*h_SYSC_mm/2)/1e6, Mn_EJ_design/1e6, "kNm", note=r"M_u = V_{max}h_{TVSC}/2 \le \phi M_{n,EJ}")
-    detail_check("IC段翼板彎矩 (Mu vs φMn)", (Vmax*h_IC_mm/2)/1e6, Mn_IC_design/1e6, "kNm", note=r"M_{u,IC} = V_{max}h_{IC}/2 \le \phi M_{n,IC(flange)}")
-
-with tab2:
-    st.subheader("3. 加勁板詳細檢核")
-    st.info(f"IC段目標剪應變 γd: **{to_sig_fig(gamma_d * 100)}** %rad")
-    st.markdown(r"↳ $\gamma_d = \frac{h_{TVSC}}{h_{IC}}(\theta_d - \theta_{e,d})$")
-    detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}")
-    detail_check("標準化寬厚比 λnw (上限)", lambda_nw, 0.6, note=r"\lambda_{nw} = \frac{h_s}{t_w}\sqrt{\frac{0.6F_y}{k_c E}} \le 0.6")
-    detail_check("標準化寬厚比 λnw (下限)", lambda_nw, 0.145, is_lower_bound=True, note=r"\lambda_{nw} \ge 0.145")
-    detail_check("最適加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"\gamma_s / \gamma_s^* \ge " + str(to_sig_fig(rs_star_threshold)))
-    
-    st.markdown(f"最大剪應變 $\gamma_u$: **{to_sig_fig(gamma_u * 100)}** %rad (依據目前加勁板配置)")
-    st.markdown(r"↳ $\gamma_u = 0.5\left(\frac{8.5k_c}{(h_s/t_w)^2} + \gamma_y\right)$")
-    
-    st.markdown(f"最大層間位移角 $\\theta_u$: **{to_sig_fig(theta_u * 100)}** %rad")
-    st.markdown(r"↳ $\theta_u = \theta_y + (\gamma_u - \gamma_y) \frac{h_{IC}}{h_{SYSC}}$")
-
-with tab3:
-    st.subheader("4. 邊界梁與交會區容量設計")
-    detail_check("邊界梁彎矩 DCR (Mb1/Mp)", M_b1/Mp_beam, 1.0, note=r"M_{b1} = \frac{V_{ult}(h_{TVSC}/2 + d_b/2) - M_{b2}(d_{EJ2}/2L')}{1 + d_{EJ2}/2L'}")
-    detail_check("邊界梁剪力 DCR (Vb/Vn)", V_b/Vn_beam, 1.0, note=r"V_b = \frac{M_{b1} + M_{b2}}{L'}")
-    detail_check("交會區剪力 DCR (Vu/Vn)", V_u_PZ/V_n_PZ, 1.0, note=r"V_{u,PZ} = \frac{V_{ult} h_{TVSC}}{d_{EJ2} - t_f} - V_b")
-
-with tab4:
-    # --- 整合彙整 ---
-    st.subheader("📊 完整檢核流程彙整")
-    
-    with st.expander("🔍 查看詳細計算數據", expanded=True):
-        col_l, col_r = st.columns(2)
-        with col_l:
-            detail_check("EJ段翼板寬厚比 λf", bf_EJ/(2*tf_EJ), bf_ratio_limit, note=r"\lambda_{f,md} = 0.38\sqrt{E / R_y F_y}")
-            detail_check("EJ段腹板寬厚比 λw", (d_EJ2-2*tf_EJ)/tw_EJ, EJ_ratio_limit, note=r"\lambda_{w,md} = 2.61\sqrt{E / R_y F_y}")
-            detail_check("未側撐長度 Lb", h_SYSC_mm, Lr_limit, "mm", note=r"L_r = 1.95 r_{ts} \frac{E}{0.7F_y} \sqrt{\dots}")
-            detail_check("EJ段剪力容量設計", Vmax/1000, Vn_EJ_design/1000, "kN", note=r"\phi V_{n,EJ} = 0.9(0.6 F_y t_{w,EJ} d_{EJ1})")
-            detail_check("EJ段彎矩容量設計", (Vmax*h_SYSC_mm/2)/1e6, Mn_EJ_design/1e6, "kN-m", note=r"M_u = V_{max}h_{TVSC}/2 \le \phi M_{n,EJ}")
-            detail_check("IC段彎矩容量設計", (Vmax*h_IC_mm/2)/1e6, Mn_IC_design/1e6, "kN-m", note=r"M_{u,IC} \le \phi M_{n,IC}")
-        with col_r:
-            detail_check("子板塊寬厚比 hs/tw", hs_val/tw_IC, hs_tw_limit, note=r"h_s/t_w \le \sqrt{8.5k_c / (2\gamma_d - \gamma_y)}")
-            detail_check("最適加勁剛度比 rs/rs*", rs_ratio, rs_star_threshold, is_lower_bound=True, note=r"\gamma_s / \gamma_s^* \ge " + str(to_sig_fig(rs_star_threshold)))
-            detail_check("邊界梁彎矩 DCR", M_b1/Mp_beam, 1.0, note=r"M_{b1} = \dots")
-            detail_check("邊界梁剪力 DCR", V_b/Vn_beam, 1.0, note=r"V_b = \frac{M_{b1} + M_{b2}}{L'}")
-            detail_check("交會區剪力 DCR", V_u_PZ/V_n_PZ, 1.0, note=r"V_{u,PZ} = \dots")
-
-    st.divider()
-    st.subheader("📝 設計總覽 (Summary)")
-    st.markdown(f"""
-    - **IC 段斷面**: `{ic_profile}` ({mat_ic_w})
-    - **EJ 段斷面**: `{ej_profile}` ({mat_ej_w})
-    - **邊界梁鋼材**: `{mat_beam}`
-    - **最大剪應變 $\gamma_u$**: **{to_sig_fig(gamma_u * 100)}** %rad
-    - **最大層間位移角 $\\theta_u$**: **{to_sig_fig(theta_u * 100)}** %rad
-    - **極限設計剪力 $V_{{max}}$**: **{to_sig_fig(Vmax/1000)}** kN
-    - **彈性側向勁度 $K_{{eff}}$**: **{to_sig_fig(K_eff_kN_mm)}** kN/mm
-    - **總用鋼量**: **{to_sig_fig(W_total)}** kg
-    - **勁度重量比 KWR**: **{to_sig_fig(KWR)}**
-    """)
-
-    # 示意圖 (高對比度專屬配色 - 同構件同色系)
-    fig = go.Figure()
-    c_flange_ic = "#FF9F0A"  # 橘黃色 (IC 翼板)
-    c_web_ic = "#FFD60A"     # 亮黃色 (IC 腹板)
-    c_flange_ej = "#0A84FF"  # 深藍色 (EJ 翼板)
-    c_web_ej = "#5AC8FA"     # 亮藍色 (EJ 腹板)
-    c_stiff = "#32D74B"      # 螢光綠 (加勁板)
-    c_end_plate = "#BF5AF2"  # 亮紫色 (端部板)
-    c_beam_web = "#636366"   # 灰色 (梁腹板)
-    c_beam_flange = "#48484A"# 深灰色 (梁翼板)
-    c_pz_doubler = "#8E8E93" # 亮灰色 (交會區貼板)
-    c_col = "#2C2C2E"        # 背景柱深灰
-    line_s = dict(color="white", width=0.0)
-
-    x_L, x_R = -L_b*1000/2, L_b*1000/2
-    y_end_bot_s = h_EJ_mm
-    y_end_bot_e = y_end_bot_s + ts_End
-    y_ic_b = y_end_bot_e
-    y_ic_t = y_ic_b + h_IC_mm
-    y_end_top_s = y_ic_t
-    y_end_top_e = y_end_top_s + ts_End
-    
-    # 繪製邊界柱與梁
-    fig.add_shape(type="rect", x0=x_L-d_c/2, x1=x_L+d_c/2, y0=-d_b, y1=h_SYSC_mm+d_b, fillcolor=c_col, opacity=0.3, line=line_s)
-    fig.add_shape(type="rect", x0=x_R-d_c/2, x1=x_R+d_c/2, y0=-d_b, y1=h_SYSC_mm+d_b, fillcolor=c_col, opacity=0.3, line=line_s)
-    def draw_beam(y_start, d_bm, tf_bm, is_top=False):
-        y_f1_s = y_start + (d_bm if is_top else -d_bm)
-        y_f1_e = y_f1_s + (tf_bm if not is_top else -tf_bm)
-        fig.add_shape(type="rect", x0=x_L+d_c/2, x1=x_R-d_c/2, y0=y_f1_s, y1=y_f1_e, fillcolor=c_beam_flange, line=line_s)
-        y_f2_s = y_start
-        y_f2_e = y_f2_s + (-tf_bm if not is_top else tf_bm)
-        fig.add_shape(type="rect", x0=x_L+d_c/2, x1=x_R-d_c/2, y0=y_f2_s, y1=y_f2_e, fillcolor=c_beam_flange, line=line_s)
-        fig.add_shape(type="rect", x0=x_L+d_c/2, x1=x_R-d_c/2, y0=y_f1_e, y1=y_f2_e, fillcolor=c_beam_web, line=line_s)
-    draw_beam(0, d_b, tf_b, is_top=False)
-    draw_beam(h_SYSC_mm, d_b, tf_b, is_top=True)
-
-    # 繪製 Panel Zone 交會區加勁板
-    for x_p in [-d_EJ2/2, d_EJ2/2]:
-        # EJ 延伸入梁的翼板
-        fig.add_shape(type="rect", x0=x_p-tf_EJ/2, x1=x_p+tf_EJ/2, y0=-d_b+tf_b, y1=-tf_b, fillcolor=c_flange_ej, line=dict(width=0))
-        fig.add_shape(type="rect", x0=x_p-tf_EJ/2, x1=x_p+tf_EJ/2, y0=h_SYSC_mm+tf_b, y1=h_SYSC_mm+d_b-tf_b, fillcolor=c_flange_ej, line=dict(width=0))
-    
-    # 兩側的交會區貼板 (Doubler Plate)
-    fig.add_shape(type="rect", x0=-d_EJ2/2+tf_EJ/2, x1=d_EJ2/2-tf_EJ/2, y0=-d_b+tf_b, y1=-tf_b, fillcolor=c_pz_doubler, line=dict(width=0))
-    fig.add_shape(type="rect", x0=-d_EJ2/2+tf_EJ/2, x1=d_EJ2/2-tf_EJ/2, y0=h_SYSC_mm+tf_b, y1=h_SYSC_mm+d_b-tf_b, fillcolor=c_pz_doubler, line=dict(width=0))
-
-    # 繪製 EJ 段
-    def draw_ej(ys, ye, ds, de, tfv, cw, flip=False):
-        dsm, dlg = (de, ds) if flip else (ds, de)
-        ysm, ylg = (ye, ys) if flip else (ys, ye)
-        fig.add_trace(go.Scatter(mode='lines', x=[-dsm/2, -dsm/2+tfv, -dlg/2+tfv, -dlg/2, -dsm/2], y=[ysm, ysm, ylg, ylg, ysm], fill="toself", fillcolor=c_flange_ej, line=line_s, showlegend=False))
-        fig.add_trace(go.Scatter(mode='lines', x=[dsm/2-tfv, dsm/2, dlg/2, dlg/2-tfv, dsm/2-tfv], y=[ysm, ysm, ylg, ylg, ysm], fill="toself", fillcolor=c_flange_ej, line=line_s, showlegend=False))
-        fig.add_trace(go.Scatter(mode='lines', x=[-dsm/2+tfv, dsm/2-tfv, dlg/2-tfv, -dlg/2+tfv, -dsm/2+tfv], y=[ysm, ysm, ylg, ylg, ysm], fill="toself", fillcolor=cw, line=line_s, showlegend=False))
-        
-        # 新增中心切割虛線，象徵由 H 型鋼切割組裝而成
-        fig.add_shape(type="line", x0=0, x1=0, y0=ys, y1=ye, line=dict(color="black", width=2.5, dash="dash"))
-
-    draw_ej(0, h_EJ_mm, d_EJ2, d_EJ1, tf_EJ, c_web_ej, flip=True)
-    draw_ej(h_SYSC_mm-h_EJ_mm, h_SYSC_mm, d_EJ1, d_EJ2, tf_EJ, c_web_ej, flip=False)
-
-    # 繪製 端部加勁板
-    w_end = d_IC + 20.0
-    fig.add_shape(type="rect", x0=-w_end/2, x1=w_end/2, y0=y_end_bot_s, y1=y_end_bot_e, fillcolor=c_end_plate, line=line_s)
-    fig.add_shape(type="rect", x0=-w_end/2, x1=w_end/2, y0=y_end_top_s, y1=y_end_top_e, fillcolor=c_end_plate, line=line_s)
-
-    # 繪製 IC 段 (拆分翼板與腹板)
-    fig.add_shape(type="rect", x0=-d_IC/2, x1=-d_IC/2+tf_IC, y0=y_ic_b, y1=y_ic_t, fillcolor=c_flange_ic, line=line_s)
-    fig.add_shape(type="rect", x0=d_IC/2-tf_IC, x1=d_IC/2, y0=y_ic_b, y1=y_ic_t, fillcolor=c_flange_ic, line=line_s)
-    fig.add_shape(type="rect", x0=-d_IC/2+tf_IC, x1=d_IC/2-tf_IC, y0=y_ic_b, y1=y_ic_t, fillcolor=c_web_ic, line=line_s)
-    
-    # 繪製 IC 段面外加勁板
-    hw_ic_net = d_IC - 2 * tf_IC
-    if nT > 0:
-        for i in range(1, int(nT) + 1):
-            yc = y_ic_b + i * (h_IC_mm / (nT + 1))
-            fig.add_shape(type="line", x0=-hw_ic_net/2, x1=hw_ic_net/2, y0=yc, y1=yc, line=dict(color=c_stiff, width=3.0))
-    if nL > 0:
-        for i in range(1, int(nL) + 1):
-            xc = -hw_ic_net/2 + i * (hw_ic_net / (nL + 1))
-            fig.add_shape(type="line", x0=xc, x1=xc, y0=y_ic_b, y1=y_ic_t, line=dict(color=c_stiff, width=3.0))
-
-    # 隱藏所有格線與座標，突顯結構模型
-    fig.update_layout(
-        height=700, 
-        template="plotly_dark", 
-        yaxis=dict(scaleanchor="x", scaleratio=1, showgrid=False, zeroline=False, showticklabels=False),
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        margin=dict(l=10,r=10,t=10,b=10)
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
+# 2. 美國 AISC 標準 W 型鋼
+AISC_W_database = {
+    "1118 X 404 X 26 X 45 (W44X335)": (1118, 404, 26, 45),
+    "1118 X 300 X 26 X 44 (W44x285)": (1118, 300, 26, 44),
+    "1108 X 428 X 50 X 90 (W40x655a)": (1108, 428, 50, 90),
+    "1108 X 300 X 22 X 40 (W44x248)": (1108, 300, 22, 40),
+    "1107 X 429 X 50 X 90 (W40X655)": (1107, 429, 50, 90),
+    "1107 X 401 X 22 X 40 (W44X290)": (1107, 401, 22, 40),
+    "1100 X 401 X 20 X 36 (W44X262)": (1100, 401, 20, 36),
+    "1100 X 300 X 20 X 36 (W44x224)": (1100, 300, 20, 36),
+    "1095 X 472 X 77 X 115 (W36X925)": (1095, 472, 77, 115),
+    "1095 X 462 X 64 X 115 (W36X853)": (1095, 462, 64, 115),
+    "1092 X 424 X 45 X 82 (W40X593)": (1092, 424, 45, 82),
+    "1092 X 424 X 45 X 83 (W40x593a)": (1092, 424, 45, 83),
+    "1090 X 401 X 18 X 31 (W44X230)": (1090, 401, 18, 31),
+    "1090 X 300 X 18 X 31 (W44x198)": (1090, 300, 18, 31),
+    "1082 X 457 X 60 X 109 (W36X800)": (1082, 457, 60, 109),
+    "1082 X 457 X 60 X 109 (W36X802)": (1082, 457, 60, 109),
+    "1078 X 461 X 64 X 115 (W36x848)": (1078, 461, 64, 115),
+    "1078 X 461 X 64 X 115 (W36x848a)": (1078, 461, 64, 115),
+    "1078 X 321 X 42 X 75 (W40x466)": (1078, 321, 42, 75),
+    "1075 X 419 X 41 X 74 (W40x531a)": (1075, 419, 41, 74),
+    "1069 X 417 X 39 X 70 (W40X503)": (1069, 417, 39, 70),
+    "1067 X 457 X 60 X 109 (W36x798)": (1067, 457, 60, 109),
+    "1066 X 457 X 60 X 109 (W36x798a)": (1066, 457, 60, 109),
+    "1062 X 452 X 55 X 99 (W36X723)": (1062, 452, 55, 99),
+    "1062 X 416 X 37 X 67 (W40x480a)": (1062, 416, 37, 67),
+    "1057 X 315 X 36 X 64 (W40X392)": (1057, 315, 36, 64),
+    "1050 X 412 X 34 X 61 (W40x436a)": (1050, 412, 34, 61),
+    "1049 X 411 X 34 X 60 (W40X431)": (1049, 411, 34, 60),
+    "1046 X 451 X 55 X 99 (W36x720a)": (1046, 451, 55, 99),
+    "1044 X 447 X 50 X 90 (W36X652)": (1044, 447, 50, 90),
+    "1041 X 409 X 31 X 56 (W40X397)": (1041, 409, 31, 56),
+    "1040 X 409 X 31 X 56 (W40x397a)": (1040, 409, 31, 56),
+    "1036 X 310 X 31 X 54 (W40X331)": (1036, 310, 31, 54),
+    "1036 X 307 X 30 X 54 (W40X327)": (1036, 307, 30, 54),
+    "1031 X 409 X 29 X 52 (W40X372)": (1031, 409, 29, 52),
+    "1031 X 406 X 28 X 51 (W40X362)": (1031, 406, 28, 51),
+    "1030 X 407 X 28 X 51 (W40x362a)": (1030, 407, 28, 51),
+    "1029 X 447 X 50 X 90 (W36x650)": (1029, 447, 50, 90),
+    "1028 X 446 X 50 X 90 (W36x650a)": (1028, 446, 50, 90),
+    "1026 X 305 X 27 X 49 (W40X294)": (1026, 305, 27, 49),
+    "1021 X 404 X 25 X 46 (W40X324)": (1021, 404, 25, 46),
+    "1021 X 305 X 26 X 46 (W40X278)": (1021, 305, 26, 46),
+    "1018 X 404 X 25 X 45 (W40x321)": (1018, 404, 25, 45),
+    "1016 X 455 X 23 X 44 (W40x328)": (1016, 455, 23, 44),
+    "1016 X 302 X 24 X 44 (W40X264)": (1016, 302, 24, 44),
+    "1012 X 442 X 45 X 82 (W36x588a)": (1012, 442, 45, 82),
+    "1011 X 437 X 41 X 74 (W36X529)": (1011, 437, 41, 74),
+    "1011 X 401 X 24 X 42 (W40X297)": (1011, 401, 24, 42),
+    "1008 X 453 X 21 X 40 (W40x298)": (1008, 453, 21, 40),
+    "1008 X 401 X 21 X 40 (W40X277)": (1008, 401, 21, 40),
+    "1008 X 302 X 21 X 40 (W40X235)": (1008, 302, 21, 40),
+    "1001 X 401 X 19 X 36 (W40X249)": (1001, 401, 19, 36),
+    "1001 X 300 X 19 X 36 (W40X211)": (1001, 300, 19, 36),
+    "1000 X 451 X 19 X 36 (W40x268)": (1000, 451, 19, 36),
+    "998 X 434 X 38 X 68 (W36X487)": (998, 434, 38, 68),
+    "996 X 437 X 41 X 74 (W36x527)": (996, 437, 41, 74),
+    "996 X 437 X 41 X 74 (W36x527a)": (996, 437, 41, 74),
+    "992 X 450 X 18 X 32 (W40x244)": (992, 450, 18, 32),
+    "991 X 401 X 17 X 31 (W40X215)": (991, 401, 17, 31),
+    "991 X 300 X 17 X 30 (W40X183)": (991, 300, 17, 30),
+    "990 X 300 X 17 X 31 (W40x183b)": (990, 300, 17, 31),
+    "988 X 432 X 35 X 62 (W36X441)": (988, 432, 35, 62),
+    "984 X 434 X 38 X 68 (W36x485a)": (984, 434, 38, 68),
+    "983 X 401 X 17 X 27 (W40X199)": (983, 401, 17, 27),
+    "982 X 450 X 18 X 27 (W40x221)": (982, 450, 18, 27),
+    "980 X 300 X 17 X 26 (W40X167)": (980, 300, 17, 26),
+    "977 X 430 X 50 X 90 (W33x619a)": (977, 430, 50, 90),
+    "975 X 427 X 31 X 56 (W36X395)": (975, 427, 31, 56),
+    "973 X 432 X 35 X 62 (W36x439)": (973, 432, 35, 62),
+    "972 X 431 X 35 X 62 (W36x439a)": (972, 431, 35, 62),
+    "970 X 450 X 18 X 21 (W40x192)": (970, 450, 18, 21),
+    "970 X 400 X 17 X 21 (W40x174)": (970, 400, 17, 21),
+    "970 X 300 X 16 X 21 (W40X149)": (970, 300, 16, 21),
+    "965 X 424 X 28 X 51 (W36X361)": (965, 424, 28, 51),
+    "963 X 425 X 46 X 83 (W33x567a)": (963, 425, 46, 83),
+    "960 X 427 X 31 X 56 (W36x393)": (960, 427, 31, 56),
+    "960 X 427 X 31 X 56 (W36x393a)": (960, 427, 31, 56),
+    "958 X 422 X 26 X 47 (W36X330)": (958, 422, 26, 47),
+    "951 X 310 X 24 X 44 (W36x256b)": (951, 310, 24, 44),
+    "950 X 425 X 28 X 51 (W36x359a)": (950, 425, 28, 51),
+    "950 X 424 X 28 X 51 (W36x359)": (950, 424, 28, 51),
+    "950 X 310 X 24 X 44 (W36X256)": (950, 310, 24, 44),
+    "949 X 421 X 42 X 76 (W33x515a)": (949, 421, 42, 76),
+    "947 X 424 X 24 X 43 (W36X302)": (947, 424, 24, 43),
+    "942 X 422 X 22 X 40 (W36X282)": (942, 422, 22, 40),
+    "942 X 422 X 26 X 47 (W36x328)": (942, 422, 26, 47),
+    "942 X 422 X 26 X 47 (W36x328a)": (942, 422, 26, 47),
+    "942 X 307 X 22 X 40 (W36X232)": (942, 307, 22, 40),
+    "937 X 422 X 21 X 37 (W36X262)": (937, 422, 21, 37),
+    "935 X 418 X 39 X 69 (W33x468a)": (935, 418, 39, 69),
+    "933 X 423 X 24 X 43 (W36x16.5)": (933, 423, 24, 43),
+    "932 X 424 X 24 X 43 (W36x300)": (932, 424, 24, 43),
+    "932 X 419 X 20 X 34 (W36X247)": (932, 419, 20, 34),
+    "932 X 310 X 21 X 35 (W36X210)": (932, 310, 21, 35),
+    "927 X 422 X 22 X 40 (W36x280)": (927, 422, 22, 40),
+    "927 X 419 X 19 X 32 (W36X231)": (927, 419, 19, 32),
+    "927 X 308 X 20 X 32 (W36x12)": (927, 308, 20, 32),
+    "927 X 307 X 19 X 32 (W36X194)": (927, 307, 19, 32),
+    "923 X 414 X 35 X 63 (W33x424a)": (923, 414, 35, 63),
+    "922 X 422 X 21 X 37 (W36x260)": (922, 422, 21, 37),
+    "922 X 307 X 18 X 30 (W36X182)": (922, 307, 18, 30),
+    "919 X 306 X 17 X 28 (W36x170b)": (919, 306, 17, 28),
+    "919 X 305 X 17 X 28 (W36X170)": (919, 305, 17, 28),
+    "917 X 419 X 20 X 34 (W36x245)": (917, 419, 20, 34),
+    "914 X 411 X 32 X 58 (W33X387)": (914, 411, 32, 58),
+    "914 X 305 X 17 X 26 (W36X160)": (914, 305, 17, 26),
+    "913 X 411 X 32 X 58 (W33x387a)": (913, 411, 32, 58),
+    "912 X 419 X 19 X 32 (W36x230)": (912, 419, 19, 32),
+    "912 X 305 X 16 X 24 (W36X150)": (912, 305, 16, 24),
+    "904 X 409 X 29 X 53 (W33X354)": (904, 409, 29, 53),
+    "904 X 305 X 15 X 20 (W36X135)": (904, 305, 15, 20),
+    "903 X 409 X 29 X 53 (W33x354a)": (903, 409, 29, 53),
+    "899 X 411 X 50 X 90 (W30x581a)": (899, 411, 50, 90),
+    "894 X 406 X 26 X 48 (W33X318)": (894, 406, 26, 48),
+    "893 X 406 X 26 X 48 (W33x318a)": (893, 406, 26, 48),
+    "884 X 404 X 24 X 44 (W33X291)": (884, 404, 24, 44),
+    "883 X 407 X 45 X 82 (W30x526a)": (883, 407, 45, 82),
+    "876 X 401 X 22 X 40 (W33X263)": (876, 401, 22, 40),
+    "869 X 404 X 21 X 36 (W33X241)": (869, 404, 21, 36),
+    "869 X 403 X 41 X 75 (W30x477)": (869, 403, 41, 75),
+    "869 X 403 X 41 X 75 (W30x477a)": (869, 403, 41, 75),
+    "861 X 401 X 20 X 33 (W33X221)": (861, 401, 20, 33),
+    "859 X 292 X 17 X 31 (W33X169)": (859, 292, 17, 31),
+    "859 X 292 X 17 X 31 (W33x169b)": (859, 292, 17, 31),
+    "856 X 399 X 18 X 29 (W33X201)": (856, 399, 18, 29),
+    "855 X 399 X 38 X 68 (W30x433a)": (855, 399, 38, 68),
+    "851 X 403 X 21 X 36 (W33x240)": (851, 403, 21, 36),
+    "851 X 295 X 16 X 27 (W33X152)": (851, 295, 16, 27),
+    "846 X 292 X 15 X 24 (W33X141)": (846, 292, 15, 24),
+    "845 X 402 X 20 X 32 (W33x220)": (845, 402, 20, 32),
+    "843 X 396 X 35 X 62 (W30X391)": (843, 396, 35, 62),
+    "843 X 396 X 35 X 62 (W30x391a)": (843, 396, 35, 62),
+    "841 X 292 X 15 X 22 (W33X130)": (841, 292, 15, 22),
+    "838 X 400 X 18 X 29 (W33x200)": (838, 400, 18, 29),
+    "836 X 292 X 14 X 19 (W33X118)": (836, 292, 14, 19),
+    "833 X 394 X 31 X 57 (W30X357)": (833, 394, 31, 57),
+    "833 X 393 X 31 X 57 (W30x357a)": (833, 393, 31, 57),
+    "826 X 389 X 50 X 90 (W27X539)": (826, 389, 50, 90),
+    "826 X 387 X 50 X 90 (W27x539a)": (826, 387, 50, 90),
+    "823 X 391 X 29 X 52 (W30X326)": (823, 391, 29, 52),
+    "823 X 390 X 29 X 52 (W30x326a)": (823, 390, 29, 52),
+    "813 X 389 X 26 X 47 (W30X292)": (813, 389, 26, 47),
+    "813 X 387 X 26 X 47 (W30x292a)": (813, 387, 26, 47),
+    "812 X 383 X 46 X 83 (W27x494a)": (812, 383, 46, 83),
+    "803 X 386 X 24 X 42 (W30X261)": (803, 386, 24, 42),
+    "798 X 379 X 42 X 76 (W27x448)": (798, 379, 42, 76),
+    "798 X 379 X 42 X 76 (W27x448a)": (798, 379, 42, 76),
+    "795 X 384 X 21 X 38 (W30X235)": (795, 384, 21, 38),
+    "785 X 384 X 20 X 34 (W30X211)": (785, 384, 20, 34),
+    "784 X 376 X 39 X 69 (W27x407a)": (784, 376, 39, 69),
+    "780 X 381 X 18 X 30 (W30X191)": (780, 381, 18, 30),
+    "780 X 267 X 17 X 30 (W30X148)": (780, 267, 17, 30),
+    "779 X 266 X 17 X 30 (W30x148b)": (779, 266, 17, 30),
+    "772 X 384 X 20 X 33 (W30x210)": (772, 384, 20, 33),
+    "772 X 381 X 17 X 27 (W30X173)": (772, 381, 17, 27),
+    "772 X 373 X 35 X 63 (W27X368)": (772, 373, 35, 63),
+    "772 X 372 X 35 X 63 (W27x368a)": (772, 372, 35, 63),
+    "770 X 267 X 16 X 25 (W30X132)": (770, 267, 16, 25),
+    "767 X 267 X 15 X 24 (W30X124)": (767, 267, 15, 24),
+    "765 X 382 X 18 X 30 (W30x190)": (765, 382, 18, 30),
+    "762 X 371 X 32 X 58 (W27X336)": (762, 371, 32, 58),
+    "762 X 369 X 32 X 58 (W27x336a)": (762, 369, 32, 58),
+    "762 X 267 X 14 X 22 (W30X116)": (762, 267, 14, 22),
+    "759 X 381 X 17 X 27 (W30x172)": (759, 381, 17, 27),
+    "757 X 267 X 14 X 19 (W30X108)": (757, 267, 14, 19),
+    "754 X 267 X 13 X 17 (W30X99)": (754, 267, 13, 17),
+    "753 X 359 X 50 X 90 (W24x492)": (753, 359, 50, 90),
+    "753 X 359 X 50 X 90 (W24x492a)": (753, 359, 50, 90),
+    "752 X 367 X 29 X 53 (W27x307a)": (752, 367, 29, 53),
+    "752 X 366 X 29 X 53 (W27X307)": (752, 366, 29, 53),
+    "749 X 264 X 12 X 15 (W30X90)": (749, 264, 12, 15),
+    "744 X 366 X 27 X 49 (W27X281)": (744, 366, 27, 49),
+    "744 X 364 X 27 X 49 (W27x281a)": (744, 364, 27, 49),
+    "739 X 354 X 46 X 83 (W24x450a)": (739, 354, 46, 83),
+    "737 X 363 X 25 X 45 (W27X258)": (737, 363, 25, 45),
+    "736 X 362 X 25 X 45 (W27x28)": (736, 362, 25, 45),
+    "729 X 361 X 23 X 41 (W27X235)": (729, 361, 23, 41),
+    "725 X 351 X 42 X 76 (W24x408)": (725, 351, 42, 76),
+    "725 X 351 X 42 X 76 (W24x408a)": (725, 351, 42, 76),
+    "721 X 358 X 21 X 38 (W27X217)": (721, 358, 21, 38),
+    "714 X 356 X 19 X 34 (W27X194)": (714, 356, 19, 34),
+    "711 X 348 X 39 X 69 (W24X370)": (711, 348, 39, 69),
+    "711 X 347 X 39 X 69 (W24x370a)": (711, 347, 39, 69),
+    "706 X 358 X 18 X 30 (W27X178)": (706, 358, 18, 30),
+    "702 X 254 X 15 X 28 (W27x129b)": (702, 254, 15, 28),
+    "701 X 356 X 17 X 27 (W27X161)": (701, 356, 17, 27),
+    "701 X 254 X 15 X 28 (W27X129)": (701, 254, 15, 28),
+    "699 X 343 X 35 X 63 (W24x335a)": (699, 343, 35, 63),
+    "698 X 343 X 35 X 63 (W24X335)": (698, 343, 35, 63),
+    "696 X 356 X 15 X 25 (W27X146)": (696, 356, 15, 25),
+    "694 X 358 X 18 X 30 (W27x177)": (694, 358, 18, 30),
+    "693 X 257 X 14 X 24 (W27X114)": (693, 257, 14, 24),
+    "689 X 340 X 32 X 58 (W24x306a)": (689, 340, 32, 58),
+    "688 X 356 X 17 X 27 (W27x160)": (688, 356, 17, 27),
+    "688 X 340 X 32 X 58 (W24X306)": (688, 340, 32, 58),
+    "688 X 254 X 13 X 21 (W27X102)": (688, 254, 13, 21),
+    "683 X 355 X 15 X 25 (W27x145)": (683, 355, 15, 25),
+    "683 X 254 X 12 X 19 (W27X94)": (683, 254, 12, 19),
+    "679 X 338 X 29 X 53 (W24x279a)": (679, 338, 29, 53),
+    "678 X 338 X 29 X 53 (W24X279)": (678, 338, 29, 53),
+    "678 X 254 X 12 X 16 (W27X84)": (678, 254, 12, 16),
+    "669 X 335 X 26 X 48 (W24x250a)": (669, 335, 26, 48),
+    "668 X 335 X 26 X 48 (W24X250)": (668, 335, 26, 48),
+    "661 X 340 X 44 X 80 (W21x402a)": (661, 340, 44, 80),
+    "660 X 333 X 24 X 44 (W24X229)": (660, 333, 24, 44),
+    "653 X 330 X 22 X 40 (W24X207)": (653, 330, 22, 40),
+    "648 X 330 X 21 X 37 (W24X192)": (648, 330, 21, 37),
+    "647 X 337 X 40 X 72 (W21x364a)": (647, 337, 40, 72),
+    "640 X 328 X 19 X 34 (W24X176)": (640, 328, 19, 34),
+    "635 X 334 X 37 X 67 (W21x333a)": (635, 334, 37, 67),
+    "635 X 330 X 18 X 31 (W24X162)": (635, 330, 18, 31),
+    "628 X 358 X 17 X 29 (W24x160)": (628, 358, 17, 29),
+    "627 X 328 X 17 X 28 (W24X146)": (627, 328, 17, 28),
+    "623 X 330 X 34 X 60 (W21x300a)": (623, 330, 34, 60),
+    "623 X 229 X 14 X 25 (W24x103b)": (623, 229, 14, 25),
+    "622 X 357 X 15 X 26 (W24x145)": (622, 357, 15, 26),
+    "622 X 328 X 15 X 24 (W24X131)": (622, 328, 15, 24),
+    "622 X 229 X 14 X 25 (W24X103)": (622, 229, 14, 25),
+    "617 X 325 X 14 X 22 (W24X117)": (617, 325, 14, 22),
+    "617 X 307 X 14 X 24 (W24x120)": (617, 307, 14, 24),
+    "617 X 230 X 13 X 22 (W24X94)": (617, 230, 13, 22),
+    "616 X 356 X 14 X 23 (W24x130)": (616, 356, 14, 23),
+    "614 X 306 X 13 X 22 (W24x110)": (614, 306, 13, 22),
+    "613 X 327 X 31 X 56 (W21x275a)": (613, 327, 31, 56),
+    "612 X 328 X 31 X 56 (W21X275)": (612, 328, 31, 56),
+    "612 X 325 X 13 X 19 (W24X104)": (612, 325, 13, 19),
+    "612 X 229 X 12 X 20 (W24X84)": (612, 229, 12, 20),
+    "610 X 305 X 12 X 20 (W24x100)": (610, 305, 12, 20),
+    "607 X 228 X 11 X 17 (W24X76)": (607, 228, 11, 17),
+    "603 X 324 X 28 X 51 (W21x248a)": (603, 324, 28, 51),
+    "602 X 325 X 28 X 51 (W21X248)": (602, 325, 28, 51),
+    "602 X 228 X 11 X 15 (W24X68)": (602, 228, 11, 15),
+    "602 X 179 X 11 X 15 (W24X62)": (602, 179, 11, 15),
+    "602 X 178 X 11 X 15 (W24x61)": (602, 178, 11, 15),
+    "599 X 478 X 100 X 140 (W14X873)": (599, 478, 100, 140),
+    "599 X 178 X 10 X 13 (W24X55)": (599, 178, 10, 13),
+    "594 X 323 X 25 X 45 (W21X223)": (594, 323, 25, 45),
+    "584 X 320 X 23 X 41 (W21X201)": (584, 320, 23, 41),
+    "579 X 472 X 95 X 130 (W14X808)": (579, 472, 95, 130),
+    "577 X 318 X 21 X 38 (W21X182)": (577, 318, 21, 38),
+    "572 X 315 X 19 X 35 (W21X166)": (572, 315, 19, 35),
+    "569 X 455 X 78 X 125 (W14X730)": (569, 455, 78, 125),
+    "569 X 454 X 78 X 125 (W14x730a)": (569, 454, 78, 125),
+    "567 X 305 X 39 X 70 (W18x311a)": (567, 305, 39, 70),
+    "566 X 305 X 39 X 70 (W18X311)": (566, 305, 39, 70),
+    "561 X 318 X 18 X 29 (W21X147)": (561, 318, 18, 29),
+    "556 X 302 X 36 X 64 (W18X283)": (556, 302, 36, 64),
+    "555 X 302 X 36 X 64 (W18x283a)": (555, 302, 36, 64),
+    "554 X 315 X 17 X 26 (W21X132)": (554, 315, 17, 26),
+    "551 X 315 X 15 X 24 (W21X122)": (551, 315, 15, 24),
+    "550 X 448 X 72 X 115 (W14x665a)": (550, 448, 72, 115),
+    "549 X 450 X 72 X 115 (W14X665)": (549, 450, 72, 115),
+    "549 X 214 X 15 X 24 (W21X93)": (549, 214, 15, 24),
+    "546 X 312 X 14 X 22 (W21X111)": (546, 312, 14, 22),
+    "546 X 300 X 33 X 58 (W18X258)": (546, 300, 33, 58),
+    "545 X 334 X 17 X 28 (W21x142)": (545, 334, 17, 28),
+    "545 X 299 X 33 X 58 (W18x258a)": (545, 299, 33, 58),
+    "544 X 312 X 13 X 20 (W21X101)": (544, 312, 13, 20),
+    "544 X 212 X 13 X 21 (W21X83)": (544, 212, 13, 21),
+    "539 X 332 X 15 X 25 (W21x127)": (539, 332, 15, 25),
+    "538 X 211 X 12 X 19 (W21X73)": (538, 211, 12, 19),
+    "537 X 230 X 15 X 24 (W21x96)": (537, 230, 15, 24),
+    "536 X 297 X 29 X 54 (W18X234)": (536, 297, 29, 54),
+    "536 X 210 X 11 X 17 (W21X68)": (536, 210, 11, 17),
+    "536 X 167 X 10 X 17 (W21X57)": (536, 167, 10, 17),
+    "535 X 296 X 29 X 54 (W18x234a)": (535, 296, 29, 54),
+    "533 X 330 X 13 X 22 (W21x112)": (533, 330, 13, 22),
+    "533 X 209 X 10 X 16 (W21X62)": (533, 209, 10, 16),
+    "531 X 442 X 66 X 106 (W14X605)": (531, 442, 66, 106),
+    "531 X 442 X 66 X 106 (W14x605a)": (531, 442, 66, 106),
+    "530 X 228 X 13 X 20 (W21x82)": (530, 228, 13, 20),
+    "529 X 166 X 9 X 14 (W21x49)": (529, 166, 9, 14),
+    "528 X 209 X 10 X 13 (W21X55)": (528, 209, 10, 13),
+    "528 X 166 X 10 X 14 (W21X50)": (528, 166, 10, 14),
+    "526 X 295 X 27 X 49 (W18X211)": (526, 295, 27, 49),
+    "526 X 165 X 9 X 11 (W21X44)": (526, 165, 9, 11),
+    "525 X 293 X 27 X 49 (W18x211a)": (525, 293, 27, 49),
+    "523 X 207 X 9 X 11 (W21X48)": (523, 207, 9, 11),
+    "518 X 292 X 24 X 44 (W18X192)": (518, 292, 24, 44),
+    "514 X 437 X 60 X 97 (W14x550a)": (514, 437, 60, 97),
+    "513 X 437 X 60 X 97 (W14X550)": (513, 437, 60, 97),
+    "508 X 290 X 23 X 40 (W18X175)": (508, 290, 23, 40),
+    "500 X 287 X 21 X 37 (W18X158)": (500, 287, 21, 37),
+    "498 X 432 X 56 X 89 (W14X500)": (498, 432, 56, 89),
+    "498 X 432 X 56 X 89 (W14x500a)": (498, 432, 56, 89),
+    "495 X 284 X 19 X 34 (W18X143)": (495, 284, 19, 34),
+    "490 X 284 X 17 X 30 (W18X130)": (490, 284, 17, 30),
+    "483 X 428 X 51 X 82 (W14x455a)": (483, 428, 51, 82),
+    "483 X 427 X 51 X 82 (W14X455)": (483, 427, 51, 82),
+    "483 X 287 X 17 X 27 (W18X119)": (483, 287, 17, 27),
+    "475 X 424 X 48 X 77 (W14X426)": (475, 424, 48, 77),
+    "475 X 284 X 15 X 24 (W18X106)": (475, 284, 15, 24),
+    "474 X 424 X 48 X 77 (W13x426a)": (474, 424, 48, 77),
+    "474 X 424 X 48 X 77 (W14x426a)": (474, 424, 48, 77),
+    "472 X 282 X 14 X 22 (W18X97)": (472, 282, 14, 22),
+    "470 X 194 X 13 X 21 (W18X71)": (470, 194, 13, 21),
+    "469 X 301 X 15 X 25 (W18x114)": (469, 301, 15, 25),
+    "467 X 282 X 12 X 20 (W18X86)": (467, 282, 12, 20),
+    "467 X 193 X 11 X 19 (W18X65)": (467, 193, 11, 19),
+    "465 X 422 X 45 X 72 (W14X398)": (465, 422, 45, 72),
+    "465 X 421 X 45 X 72 (W13x398a)": (465, 421, 45, 72),
+    "465 X 421 X 45 X 72 (W14x398a)": (465, 421, 45, 72),
+    "465 X 300 X 14 X 23 (W18x105)": (465, 300, 14, 23),
+    "465 X 224 X 13 X 23 (W18x85)": (465, 224, 13, 23),
+    "462 X 279 X 11 X 17 (W18X76)": (462, 279, 11, 17),
+    "462 X 192 X 11 X 18 (W18X60)": (462, 192, 11, 18),
+    "461 X 298 X 13 X 21 (W18x96)": (461, 298, 13, 21),
+    "461 X 223 X 12 X 21 (W18x77)": (461, 223, 12, 21),
+    "460 X 191 X 10 X 16 (W18X55)": (460, 191, 10, 16),
+    "460 X 154 X 9 X 15 (W18X46)": (460, 154, 9, 15),
+    "457 X 222 X 11 X 19 (W18x70)": (457, 222, 11, 19),
+    "457 X 190 X 9 X 14 (W18X50)": (457, 190, 9, 14),
+    "455 X 419 X 42 X 68 (W14X370)": (455, 419, 42, 68),
+    "455 X 418 X 42 X 68 (W13x370a)": (455, 418, 42, 68),
+    "455 X 418 X 42 X 68 (W14x370a)": (455, 418, 42, 68),
+    "455 X 153 X 8 X 13 (W18X40)": (455, 153, 8, 13),
+    "454 X 221 X 10 X 17 (W18x64)": (454, 221, 10, 17),
+    "454 X 190 X 9 X 13 (W18x45)": (454, 190, 9, 13),
+    "450 X 152 X 8 X 11 (W18X35)": (450, 152, 8, 11),
+    "446 X 416 X 39 X 63 (W13x342a)": (446, 416, 39, 63),
+    "446 X 416 X 39 X 63 (W14x342a)": (446, 416, 39, 63),
+    "444 X 417 X 39 X 63 (W14X342)": (444, 417, 39, 63),
+    "437 X 412 X 36 X 58 (W14x314)": (437, 412, 36, 58),
+    "435 X 412 X 36 X 57 (W13x311a)": (435, 412, 36, 57),
+    "435 X 412 X 36 X 57 (W14x311a)": (435, 412, 36, 57),
+    "434 X 411 X 36 X 57 (W14X311)": (434, 411, 36, 57),
+    "432 X 264 X 15 X 25 (W16X100)": (432, 264, 15, 25),
+    "431 X 265 X 15 X 24 (W16x400)": (431, 265, 15, 24),
+    "427 X 424 X 48 X 53 (W14x320)": (427, 424, 48, 53),
+    "427 X 410 X 33 X 53 (W14x287)": (427, 410, 33, 53),
+    "427 X 340 X 45 X 75 (W12X336)": (427, 340, 45, 75),
+    "427 X 340 X 45 X 75 (W12x336a)": (427, 340, 45, 75),
+    "427 X 264 X 13 X 22 (W16X89)": (427, 264, 13, 22),
+    "425 X 409 X 33 X 53 (W13x283a)": (425, 409, 33, 53),
+    "425 X 409 X 33 X 53 (W14x283a)": (425, 409, 33, 53),
+    "424 X 409 X 33 X 53 (W14X283)": (424, 409, 33, 53),
+    "419 X 407 X 31 X 49 (W14x264)": (419, 407, 31, 49),
+    "419 X 262 X 12 X 19 (W16X77)": (419, 262, 12, 19),
+    "417 X 406 X 30 X 48 (W14X257)": (417, 406, 30, 48),
+    "417 X 181 X 11 X 18 (W16X57)": (417, 181, 11, 18),
+    "416 X 406 X 30 X 48 (W13x257a)": (416, 406, 30, 48),
+    "416 X 406 X 30 X 48 (W14x257a)": (416, 406, 30, 48),
+    "415 X 338 X 41 X 69 (W12x305a)": (415, 338, 41, 69),
+    "415 X 293 X 14 X 22 (W16x96)": (415, 293, 14, 22),
+    "415 X 218 X 13 X 22 (W16x78)": (415, 218, 13, 22),
+    "414 X 335 X 41 X 69 (W12X305)": (414, 335, 41, 69),
+    "414 X 259 X 10 X 17 (W16X67)": (414, 259, 10, 17),
+    "414 X 180 X 10 X 16 (W16X50)": (414, 180, 10, 16),
+    "413 X 405 X 29 X 46 (W14x246)": (413, 405, 29, 46),
+    "410 X 292 X 13 X 20 (W16x88)": (410, 292, 13, 20),
+    "410 X 217 X 12 X 20 (W16x71)": (410, 217, 12, 20),
+    "409 X 404 X 28 X 44 (W14x237)": (409, 404, 28, 44),
+    "409 X 179 X 9 X 14 (W16X45)": (409, 179, 9, 14),
+    "407 X 404 X 27 X 44 (W13x233a)": (407, 404, 27, 44),
+    "407 X 404 X 27 X 44 (W14x233a)": (407, 404, 27, 44),
+    "406 X 404 X 27 X 44 (W14X233)": (406, 404, 27, 44),
+    "406 X 403 X 27 X 43 (W14x228)": (406, 403, 27, 43),
+    "406 X 216 X 11 X 18 (W16x64)": (406, 216, 11, 18),
+    "406 X 178 X 8 X 13 (W16X40)": (406, 178, 8, 13),
+    "404 X 333 X 39 X 63 (W12X279)": (404, 333, 39, 63),
+    "404 X 178 X 7 X 11 (W16X36)": (404, 178, 7, 11),
+    "404 X 140 X 7 X 11 (W16X31)": (404, 140, 7, 11),
+    "403 X 402 X 26 X 41 (W14x219)": (403, 402, 26, 41),
+    "403 X 334 X 39 X 63 (W12x279a)": (403, 334, 39, 63),
+    "403 X 215 X 10 X 16 (W16x58)": (403, 215, 10, 16),
+    "399 X 401 X 25 X 40 (W13x211)": (399, 401, 25, 40),
+    "399 X 401 X 25 X 40 (W14X211)": (399, 401, 25, 40),
+    "399 X 140 X 6 X 9 (W16X26)": (399, 140, 6, 9),
+    "397 X 400 X 24 X 38 (W14x202)": (397, 400, 24, 38),
+    "394 X 399 X 23 X 37 (W14X193)": (394, 399, 23, 37),
+    "393 X 399 X 23 X 37 (W13x193)": (393, 399, 23, 37),
+    "391 X 398 X 21 X 35 (W14x184)": (391, 398, 21, 35),
+    "391 X 330 X 36 X 57 (W12X252)": (391, 330, 36, 57),
+    "391 X 330 X 35 X 57 (W12x252a)": (391, 330, 35, 57),
+    "387 X 398 X 21 X 33 (W13x176)": (387, 398, 21, 33),
+    "386 X 399 X 21 X 33 (W14X176)": (386, 399, 21, 33),
+    "384 X 396 X 20 X 32 (W14x167)": (384, 396, 20, 32),
+    "384 X 328 X 33 X 53 (W12X230)": (384, 328, 33, 53),
+    "382 X 328 X 33 X 53 (W12x230a)": (382, 328, 33, 53),
+    "381 X 396 X 19 X 30 (W14X159)": (381, 396, 19, 30),
+    "381 X 395 X 19 X 30 (W14x158)": (381, 395, 19, 30),
+    "380 X 395 X 19 X 30 (W13x159)": (380, 395, 19, 30),
+    "378 X 394 X 18 X 29 (W14x150)": (378, 394, 18, 29),
+    "376 X 394 X 17 X 28 (W14X145)": (376, 394, 17, 28),
+    "375 X 394 X 17 X 28 (W13x145)": (375, 394, 17, 28),
+    "375 X 394 X 17 X 27 (W14x142)": (375, 394, 17, 27),
+    "375 X 374 X 17 X 27 (W14x136)": (375, 374, 17, 27),
+    "374 X 325 X 30 X 48 (W12x210a)": (374, 325, 30, 48),
+    "373 X 373 X 16 X 26 (W14X132)": (373, 373, 16, 26),
+    "373 X 325 X 30 X 48 (W12X210)": (373, 325, 30, 48),
+    "371 X 373 X 15 X 25 (W14x127)": (371, 373, 15, 25),
+    "368 X 373 X 15 X 24 (W14X120)": (368, 373, 15, 24),
+    "368 X 372 X 14 X 24 (W14x119)": (368, 372, 14, 24),
+    "366 X 323 X 27 X 44 (W12X190)": (366, 323, 27, 44),
+    "365 X 371 X 14 X 22 (W14x111)": (365, 371, 14, 22),
+    "363 X 371 X 13 X 22 (W14X109)": (363, 371, 13, 22),
+    "363 X 257 X 13 X 22 (W14X82)": (363, 257, 13, 22),
+    "362 X 370 X 13 X 21 (W14x103)": (362, 370, 13, 21),
+    "361 X 371 X 12 X 20 (W14X99)": (361, 371, 12, 20),
+    "361 X 257 X 11 X 20 (W14X74)": (361, 257, 11, 20),
+    "360 X 305 X 11 X 20 (W14x84)": (360, 305, 11, 20),
+    "359 X 369 X 12 X 19 (W14x95)": (359, 369, 12, 19),
+    "358 X 172 X 8 X 13 (W14X38)": (358, 172, 8, 13),
+    "357 X 305 X 11 X 18 (W14x78)": (357, 305, 11, 18),
+    "356 X 368 X 11 X 17 (W14x87)": (356, 368, 11, 17),
+    "356 X 368 X 11 X 18 (W14X90)": (356, 368, 11, 18),
+    "356 X 320 X 24 X 40 (W12X170)": (356, 320, 24, 40),
+    "356 X 254 X 11 X 18 (W14X68)": (356, 254, 11, 18),
+    "356 X 171 X 7 X 12 (W14X34)": (356, 171, 7, 12),
+    "353 X 318 X 23 X 38 (W12x161)": (353, 318, 23, 38),
+    "353 X 254 X 10 X 16 (W14X61)": (353, 254, 10, 16),
+    "353 X 205 X 9 X 17 (W14X53)": (353, 205, 9, 17),
+    "353 X 128 X 6 X 11 (W14X26)": (353, 128, 6, 11),
+    "351 X 204 X 9 X 15 (W14X48)": (351, 204, 9, 15),
+    "351 X 171 X 7 X 10 (W14X30)": (351, 171, 7, 10),
+    "348 X 318 X 22 X 36 (W12X152)": (348, 318, 22, 36),
+    "348 X 203 X 8 X 13 (W14X43)": (348, 203, 8, 13),
+    "348 X 127 X 6 X 9 (W14X22)": (348, 127, 6, 9),
+    "340 X 315 X 20 X 32 (W12X136)": (340, 315, 20, 32),
+    "340 X 314 X 19 X 31 (W12x133)": (340, 314, 19, 31),
+    "333 X 312 X 18 X 28 (W12X120)": (333, 312, 18, 28),
+    "328 X 310 X 15 X 25 (W12X106)": (328, 310, 15, 25),
+    "324 X 310 X 15 X 23 (W12x99)": (324, 310, 15, 23),
+    "323 X 310 X 14 X 23 (W12X96)": (323, 310, 14, 23),
+    "321 X 309 X 14 X 22 (W12x92)": (321, 309, 14, 22),
+    "318 X 307 X 13 X 20 (W12x85)": (318, 307, 13, 20),
+    "318 X 307 X 13 X 21 (W12X87)": (318, 307, 13, 21),
+    "318 X 167 X 8 X 13 (W12X35)": (318, 167, 8, 13),
+    "315 X 307 X 12 X 19 (W12X79)": (315, 307, 12, 19),
+    "312 X 305 X 11 X 17 (W12X72)": (312, 305, 11, 17),
+    "312 X 166 X 7 X 11 (W12X30)": (312, 166, 7, 11),
+    "312 X 102 X 7 X 11 (W12X22)": (312, 102, 7, 11),
+    "311 X 167 X 8 X 14 (W12x36)": (311, 167, 8, 14),
+    "310 X 254 X 9 X 16 (W12X58)": (310, 254, 9, 16),
+    "310 X 205 X 9 X 16 (W12X50)": (310, 205, 9, 16),
+    "310 X 165 X 6 X 10 (W12X26)": (310, 165, 6, 10),
+    "310 X 102 X 6 X 9 (W12X19)": (310, 102, 6, 9),
+    "307 X 305 X 10 X 15 (W12X65)": (307, 305, 10, 15),
+    "307 X 254 X 9 X 15 (W12X53)": (307, 254, 9, 15),
+    "307 X 204 X 9 X 15 (W12X45)": (307, 204, 9, 15),
+    "307 X 166 X 7 X 12 (W12x31)": (307, 166, 7, 12),
+    "305 X 102 X 6 X 7 (W12x16.5)": (305, 102, 6, 7),
+    "305 X 101 X 6 X 7 (W12X16)": (305, 101, 6, 7),
+    "304 X 165 X 6 X 10 (W12x27)": (304, 165, 6, 10),
+    "302 X 203 X 7 X 13 (W12X40)": (302, 203, 7, 13),
+    "302 X 101 X 5 X 6 (W12X14)": (302, 101, 5, 6),
+    "290 X 264 X 19 X 32 (W10X112)": (290, 264, 19, 32),
+    "282 X 262 X 17 X 28 (W10X100)": (282, 262, 17, 28),
+    "276 X 261 X 16 X 25 (W10x89)": (276, 261, 16, 25),
+    "274 X 262 X 15 X 25 (W10X88)": (274, 262, 15, 25),
+    "269 X 259 X 13 X 22 (W10X77)": (269, 259, 13, 22),
+    "267 X 258 X 13 X 21 (W10x72)": (267, 258, 13, 21),
+    "267 X 148 X 8 X 13 (W10X30)": (267, 148, 8, 13),
+    "264 X 257 X 12 X 19 (W10x66)": (264, 257, 12, 19),
+    "264 X 257 X 12 X 20 (W10X68)": (264, 257, 12, 20),
+    "262 X 147 X 7 X 11 (W10X26)": (262, 147, 7, 11),
+    "260 X 147 X 7 X 13 (W10x29)": (260, 147, 7, 13),
+    "259 X 257 X 11 X 17 (W10X60)": (259, 257, 11, 17),
+    "259 X 146 X 6 X 9 (W10X22)": (259, 146, 6, 9),
+    "259 X 102 X 6 X 10 (W10X19)": (259, 102, 6, 10),
+    "257 X 254 X 9 X 16 (W10X54)": (257, 254, 9, 16),
+    "257 X 204 X 9 X 16 (W10X45)": (257, 204, 9, 16),
+    "257 X 102 X 6 X 8 (W10X17)": (257, 102, 6, 8),
+    "256 X 146 X 6 X 11 (W10x25)": (256, 146, 6, 11),
+    "254 X 254 X 9 X 14 (W10X49)": (254, 254, 9, 14),
+    "254 X 102 X 6 X 7 (W10X15)": (254, 102, 6, 7),
+    "252 X 203 X 8 X 13 (W10X39)": (252, 203, 8, 13),
+    "251 X 146 X 6 X 9 (W10x21)": (251, 146, 6, 9),
+    "251 X 101 X 5 X 5 (W10X12)": (251, 101, 5, 5),
+    "251 X 100 X 5 X 5 (W10x11.5)": (251, 100, 5, 5),
+    "247 X 202 X 7 X 11 (W10X33)": (247, 202, 7, 11),
+    "229 X 210 X 14 X 24 (W8X67)": (229, 210, 14, 24),
+    "222 X 209 X 13 X 21 (W8X58)": (222, 209, 13, 21),
+    "216 X 206 X 10 X 17 (W8X48)": (216, 206, 10, 17),
+    "210 X 205 X 9 X 14 (W8X40)": (210, 205, 9, 14),
+    "210 X 134 X 6 X 10 (W8X21)": (210, 134, 6, 10),
+    "207 X 134 X 6 X 10 (W8x20)": (207, 134, 6, 10),
+    "207 X 133 X 6 X 8 (W8X18)": (207, 133, 6, 8),
+    "206 X 204 X 8 X 13 (W8X35)": (206, 204, 8, 13),
+    "206 X 102 X 6 X 8 (W8X15)": (206, 102, 6, 8),
+    "205 X 166 X 7 X 12 (W8X28)": (205, 166, 7, 12),
+    "203 X 203 X 7 X 11 (W8X31)": (203, 203, 7, 11),
+    "203 X 133 X 6 X 8 (W8x17)": (203, 133, 6, 8),
+    "203 X 102 X 6 X 6 (W8X13)": (203, 102, 6, 6),
+    "201 X 165 X 6 X 10 (W8X24)": (201, 165, 6, 10),
+    "200 X 100 X 4 X 5 (W8X10)": (200, 100, 4, 5),
+    "162 X 154 X 8 X 12 (W6X25)": (162, 154, 8, 12),
+    "160 X 102 X 7 X 10 (W6X16)": (160, 102, 7, 10),
+    "157 X 153 X 7 X 9 (W6X20)": (157, 153, 7, 9),
+    "153 X 102 X 6 X 7 (W6X12)": (153, 102, 6, 7),
+    "152 X 152 X 6 X 7 (W6X15)": (152, 152, 6, 7),
+    "152 X 152 X 6 X 7 (W6x15.5)": (152, 152, 6, 7),
+    "150 X 100 X 4 X 5 (W6X9)": (150, 100, 4, 5),
+    "148 X 100 X 4 X 5 (W6X8.5)": (148, 100, 4, 5),
+    "131 X 128 X 7 X 11 (W5X19)": (131, 128, 7, 11),
+    "130 X 128 X 7 X 11 (W5x18.5)": (130, 128, 7, 11),
+    "127 X 127 X 6 X 9 (W5X16)": (127, 127, 6, 9),
+    "106 X 103 X 7 X 9 (W4X13)": (106, 103, 7, 9)
+}
